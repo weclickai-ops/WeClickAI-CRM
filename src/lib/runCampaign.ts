@@ -1,11 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { geocodePostal, scrapeNiche, onlyWithoutWebsite } from "./scraper";
+import { geocodePostal, scrapeNiche, onlyWithoutWebsite, type ScrapedLead } from "./scraper";
 import { runWorkflows } from "./workflows";
 
 /**
- * Runs one scrape pass for a campaign. Requires a service-role (admin)
- * Supabase client so it can insert leads + log workflow runs regardless
- * of session. Returns { found, inserted }.
+ * Runs one scrape pass for a campaign. `postal_code` may hold MULTIPLE codes
+ * (comma or newline separated) — each is geocoded and scraped separately,
+ * then merged and de-duplicated by place_id.
  */
 export async function runCampaign(sb: SupabaseClient, campaignId: string) {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
@@ -15,25 +15,37 @@ export async function runCampaign(sb: SupabaseClient, campaignId: string) {
     .from("campaigns").select("*").eq("id", campaignId).single();
   if (error || !campaign) throw new Error("Campaign not found");
 
-  // 1. resolve postal code → lat/lng (cache on the campaign after first run)
-  let lat = campaign.center_lat, lng = campaign.center_lng;
-  if (lat == null || lng == null) {
-    const geo = await geocodePostal(campaign.postal_code, campaign.country, apiKey);
-    if (!geo) throw new Error(`Could not locate postal code ${campaign.postal_code} (${campaign.country}). Check it's valid.`);
-    lat = geo.lat; lng = geo.lng;
-    await sb.from("campaigns").update({ center_lat: lat, center_lng: lng }).eq("id", campaignId);
+  const codes: string[] = String(campaign.postal_code)
+    .split(/[,\n]/).map((c: string) => c.trim()).filter(Boolean);
+  if (codes.length === 0) throw new Error("No postal code set on this campaign.");
+
+  let all: ScrapedLead[] = [];
+  const failed: string[] = [];
+  let firstCenter: { lat: number; lng: number } | null = null;
+
+  for (const code of codes) {
+    const geo = await geocodePostal(code, campaign.country, apiKey);
+    if (!geo) { failed.push(code); continue; }
+    if (!firstCenter) firstCenter = geo;
+    const leads = await scrapeNiche({
+      niche: campaign.niche, keywords: campaign.keywords,
+      lat: geo.lat, lng: geo.lng, radiusKm: campaign.radius_km, apiKey, maxResults: 20,
+    });
+    all.push(...leads);
   }
 
-  // 2. scrape
-  let leads = await scrapeNiche({
-    niche: campaign.niche, keywords: campaign.keywords,
-    lat, lng, radiusKm: campaign.radius_km, apiKey, maxResults: 20,
-  });
-  if (campaign.only_without_website) leads = onlyWithoutWebsite(leads);
+  if (!firstCenter) {
+    throw new Error(`Could not locate any of these postal codes (${codes.join(", ")}) in ${campaign.country}. Check they're valid.`);
+  }
 
-  // 3. dedupe-insert (place_id is unique; upsert ignores dupes)
+  await sb.from("campaigns").update({ center_lat: firstCenter.lat, center_lng: firstCenter.lng }).eq("id", campaignId);
+
+  if (campaign.only_without_website) all = onlyWithoutWebsite(all);
+  const seen = new Set<string>();
+  all = all.filter((l) => (l.place_id && !seen.has(l.place_id)) ? (seen.add(l.place_id), true) : false);
+
   let inserted = 0;
-  for (const l of leads) {
+  for (const l of all) {
     const row = {
       business_name: l.business_name, phone: l.phone, website: l.website,
       address: l.address, category: l.category, city: l.city, country: l.country,
@@ -46,17 +58,15 @@ export async function runCampaign(sb: SupabaseClient, campaignId: string) {
 
     if (!insErr && data) {
       inserted++;
-      // fire lead.created workflows for genuinely new leads
       try { await runWorkflows(sb, "lead.created", data); } catch { /* logged inside */ }
     }
   }
 
-  // 4. update campaign stats
   await sb.from("campaigns").update({
     last_run_at: new Date().toISOString(),
     last_run_found: inserted,
     total_found: (campaign.total_found ?? 0) + inserted,
   }).eq("id", campaignId);
 
-  return { found: leads.length, inserted };
+  return { found: all.length, inserted, areas: codes.length, failedAreas: failed };
 }
