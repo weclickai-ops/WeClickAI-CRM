@@ -4,33 +4,32 @@
 
 /* =====================================================================
    WeClick AI — brand tokens
-   Swap these once you confirm the exact hex from your logo.
    The whole app is themed from here.
    ===================================================================== */
 :root {
-  /* dark surfaces (sidebar, login panel) */
-  --charcoal:       #1B1D22;
-  --charcoal-soft:  #24272E;
-  --charcoal-line:  #33373F;
+  /* dark surfaces (sidebar, login panel) — near-black, matches weclickai.com */
+  --charcoal:       #101014;
+  --charcoal-soft:  #1A1A20;
+  --charcoal-line:  #2A2A32;
 
-  /* copper / rust accent */
-  --copper:         #C2703C;
-  --copper-hover:   #AC6032;
-  --copper-soft:    #F3E4D8;
+  /* brand orange accent (#ff6200 from weclickai.com) */
+  --copper:         #FF6200;
+  --copper-hover:   #E05600;
+  --copper-soft:    #FFEADB;
 
-  /* light app chrome */
-  --paper:          #F6F5F2;   /* app background */
+  /* light app chrome — clean white like the site */
+  --paper:          #F7F7F8;   /* app background */
   --surface:        #FFFFFF;   /* cards */
-  --ink:            #1E2024;   /* primary text */
-  --muted:          #6C7178;   /* secondary text */
-  --line:           #E7E4DE;   /* hairlines */
+  --ink:            #141418;   /* primary text */
+  --muted:          #6B7280;   /* secondary text */
+  --line:           #EAEAED;   /* hairlines */
 
   /* status */
-  --ok:             #3E7C59;
-  --warn:           #C08A2E;
-  --bad:            #A6483A;
+  --ok:             #2E9E5B;
+  --warn:           #D08A1E;
+  --bad:            #E5484D;
 
-  --font-display: "Space Grotesk", system-ui, sans-serif;
+  --font-display: "Sora", system-ui, sans-serif;
   --font-sans:    "Inter", system-ui, sans-serif;
 }
 
