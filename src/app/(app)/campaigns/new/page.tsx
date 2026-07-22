@@ -24,6 +24,8 @@ export default function NewCampaignPage() {
 
   function upd(k: string, v: any) { setF((s) => ({ ...s, [k]: v })); }
 
+  const pinCount = f.postal_code.split(/[,\n]/).map((c) => c.trim()).filter(Boolean).length;
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true); setError(null);
@@ -39,7 +41,6 @@ export default function NewCampaignPage() {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ campaign_id: data.id }),
         });
-        // don't block navigation on scrape errors — surface but continue
         if (!res.ok) {
           const d = await res.json().catch(() => ({}));
           setError(`Campaign saved, but the first run failed: ${d.error ?? res.statusText}. You can retry from the campaigns list.`);
@@ -57,7 +58,7 @@ export default function NewCampaignPage() {
 
   return (
     <>
-      <PageHeader title="New campaign" subtitle="Drop a postal code anywhere in the world — we center the search there." />
+      <PageHeader title="New campaign" subtitle="Add one or more postal codes — we search each area and combine the results." />
 
       <form onSubmit={submit} className="card max-w-2xl space-y-5 p-6">
         <div>
@@ -87,16 +88,29 @@ export default function NewCampaignPage() {
             </select>
           </div>
           <div>
-            <label className="label">Postal / PIN / ZIP</label>
-            <input className="input" required value={f.postal_code}
-                   onChange={(e) => upd("postal_code", e.target.value)} placeholder="500034" />
-          </div>
-          <div>
             <label className="label">Search radius</label>
             <select className="input" value={f.radius_km} onChange={(e) => upd("radius_km", e.target.value)}>
               {[5, 10, 25, 50].map((r) => <option key={r} value={r}>{r} km</option>)}
             </select>
           </div>
+          <div className="self-end pb-2 text-xs text-muted">
+            {pinCount > 0 && <>Searching <strong>{pinCount}</strong> area{pinCount > 1 ? "s" : ""} · up to ~{pinCount * 20} businesses</>}
+          </div>
+        </div>
+
+        <div>
+          <label className="label">Postal / PIN / ZIP codes</label>
+          <textarea
+            className="input min-h-[76px] resize-y"
+            required
+            value={f.postal_code}
+            onChange={(e) => upd("postal_code", e.target.value)}
+            placeholder="500034, 500081, 500072, 500032, 500016"
+          />
+          <p className="mt-1.5 text-xs text-muted">
+            Enter multiple codes separated by commas to cover a whole city. Each area returns up to ~20 businesses;
+            duplicates across areas are removed automatically. e.g. for Hyderabad: 500034, 500081, 500072, 500032, 500016, 500084, 500003, 500060
+          </p>
         </div>
 
         <div>
