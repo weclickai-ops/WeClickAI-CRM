@@ -1,27 +1,23 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { Sidebar } from "@/components/Sidebar";
-import type { Profile } from "@/lib/types";
+import type { Metadata } from "next";
+import "./globals.css";
 
-export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+export const metadata: Metadata = {
+  title: "WeClick AI · CRM",
+  description: "Lead generation & pipeline CRM for WeClick AI",
+};
 
-  const { data: profile } = await supabase
-    .from("profiles").select("*").eq("id", user.id).single();
-
-  if (!profile) {
-    // profile row not yet created (edge case) — bounce to login
-    redirect("/login");
-  }
-
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar profile={profile as Profile} />
-      <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-7xl px-6 py-7 lg:px-8">{children}</div>
-      </main>
-    </div>
+    <html lang="en">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@400;500;600;700&display=swap"
+          rel="stylesheet"
+        />
+      </head>
+      <body>{children}</body>
+    </html>
   );
 }
