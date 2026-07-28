@@ -8,7 +8,9 @@ export default async function PipelinePage() {
   const supabase = await createClient();
   const [{ data: stages }, { data: leads }] = await Promise.all([
     supabase.from("pipeline_stages").select("*").order("position"),
-    supabase.from("leads").select("id, business_name, phone, city, status, stage_id, website")
+    supabase.from("leads")
+      .select("id, business_name, phone, city, status, stage_id, website, next_followup_at, followups_enabled")
+      .eq("archived", false)
       .order("created_at", { ascending: false }).limit(500),
   ]);
 
