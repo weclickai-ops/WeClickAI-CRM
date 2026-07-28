@@ -1,10 +1,3 @@
-// Replaces src/app/(app)/layout.tsx
-//
-// Change: the original only checked that a profile row existed. A profile row is
-// created automatically by the signup trigger, so "has a profile" was never a
-// meaningful gate. This checks `active`, which is what the Team settings toggle
-// has been writing to all along.
-
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/Sidebar";
@@ -21,7 +14,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     .from("profiles")
     .select("*")
     .eq("id", user.id)
-    .maybeSingle(); // .single() throws on 0 rows; we want to handle that case
+    .maybeSingle();
 
   // No profile row at all — the signup trigger didn't fire. Sending them to
   // /login would loop, because they do have a valid session.
