@@ -7,9 +7,14 @@ export interface Profile {
   id: string; email: string; full_name: string | null;
   role: Role; avatar_url: string | null; active: boolean; created_at: string;
 }
+export type StageGroup = "todo" | "in_progress" | "complete";
+
 export interface PipelineStage {
   id: string; name: string; position: number; color: string;
   is_won: boolean; is_lost: boolean;
+  stage_group: StageGroup;
+  maps_to_status: LeadStatus;
+  is_default: boolean;
 }
 export interface Campaign {
   id: string; name: string; niche: string; keywords: string | null;
@@ -27,6 +32,41 @@ export interface Lead {
   place_id: string | null; source: string; status: LeadStatus;
   stage_id: string | null; campaign_id: string | null; assigned_to: string | null;
   custom_data: Record<string, unknown>; created_at: string; updated_at: string;
+
+  // the Notion model
+  person_name: string | null;
+  bio: string | null;
+  instagram: string | null;
+  whatsapp: string | null;
+  linkedin: string | null;
+  facebook: string | null;
+  x_handle: string | null;
+  youtube: string | null;
+  logo_url: string | null;
+  archived: boolean;
+
+  // follow-up engine
+  followups_enabled: boolean;
+  followup_interval_days: number;
+  next_followup_at: string | null;
+  last_followed_up_at: string | null;
+}
+
+/** From the lead_checks view — computed, never stored, so it can't go stale. */
+export interface LeadChecks {
+  id: string;
+  needs_name: boolean;
+  needs_email: boolean;
+  needs_phone: boolean;
+  followup_overdue: boolean;
+  days_overdue: number | null;
+}
+
+export type ScriptKind = "call" | "email" | "whatsapp" | "dm";
+
+export interface LeadScript {
+  id: string; name: string; kind: ScriptKind; version: number;
+  body: string; active: boolean; created_at: string; updated_at: string;
 }
 export interface CustomField {
   id: string; entity: string; label: string; key: string;
