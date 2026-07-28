@@ -7,6 +7,7 @@ export interface Profile {
   id: string; email: string; full_name: string | null;
   role: Role; avatar_url: string | null; active: boolean; created_at: string;
 }
+
 export type StageGroup = "todo" | "in_progress" | "complete";
 
 export interface PipelineStage {
@@ -16,6 +17,7 @@ export interface PipelineStage {
   maps_to_status: LeadStatus;
   is_default: boolean;
 }
+
 export interface Campaign {
   id: string; name: string; niche: string; keywords: string | null;
   country: string; postal_code: string; radius_km: number;
@@ -25,6 +27,7 @@ export interface Campaign {
   last_run_at: string | null; last_run_found: number; total_found: number;
   created_at: string;
 }
+
 export interface Lead {
   id: string; business_name: string; phone: string | null; email: string | null;
   website: string | null; address: string | null; category: string | null;
@@ -68,11 +71,13 @@ export interface LeadScript {
   id: string; name: string; kind: ScriptKind; version: number;
   body: string; active: boolean; created_at: string; updated_at: string;
 }
+
 export interface CustomField {
   id: string; entity: string; label: string; key: string;
   field_type: "text" | "number" | "select" | "checkbox" | "date" | "url";
   options: string[]; required: boolean; position: number;
 }
+
 export interface Invoice {
   id: string; number: string; lead_id: string | null; client_name: string;
   client_email: string | null; currency: string;
@@ -81,6 +86,7 @@ export interface Invoice {
   status: InvoiceStatus; due_date: string | null; notes: string | null;
   issued_at: string | null; paid_at: string | null; created_at: string;
 }
+
 export interface Workflow {
   id: string; name: string; trigger_event: string;
   conditions: { field: string; op: string; value: string }[];
