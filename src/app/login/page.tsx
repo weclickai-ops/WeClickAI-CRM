@@ -1,120 +1,71 @@
-"use client";
+// New file: src/app/pending/page.tsx
+//
+// Where an account lands between "signed up" and "approved by an admin", and
+// where a revoked account lands instead of a silently broken dashboard.
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { createClient } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
 import { Logo } from "@/components/Logo";
-import { Loader2 } from "lucide-react";
+import { SignOutButton } from "./SignOutButton";
 
-export default function LoginPage() {
-  const router = useRouter();
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+export const dynamic = "force-dynamic";
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true); setError(null); setNotice(null);
-    const supabase = createClient();
-    try {
-      if (mode === "signin") {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        router.push("/dashboard");
-        router.refresh();
-      } else {
-        const { data, error } = await supabase.auth.signUp({
-          email, password,
-          options: { data: { full_name: fullName } },
-        });
-        if (error) throw error;
-        if (data.session) {
-          router.push("/dashboard");
-          router.refresh();
-        } else {
-          setNotice("Account created. Check your email to confirm, then sign in.");
-          setMode("signin");
-        }
-      }
-    } catch (err: any) {
-      setError(err?.message ?? "Something went wrong.");
-    } finally {
-      setLoading(false);
-    }
-  }
+export default async function PendingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ reason?: string }>;
+}) {
+  const { reason } = await searchParams;
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("active, full_name, email, created_at")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  // Approved while this tab sat open — send them straight through.
+  if (profile?.active) redirect("/dashboard");
+
+  const brokenSignup = reason === "no-profile";
 
   return (
-    <div className="grid min-h-screen lg:grid-cols-2">
-      {/* left — brand panel */}
-      <div className="relative hidden flex-col justify-between p-12 lg:flex"
-           style={{ background: "var(--charcoal)" }}>
-        <Logo light />
-        <div className="max-w-md">
-          <h1 className="font-display text-4xl font-semibold leading-tight text-white">
-            Find businesses that <span className="text-copper">don&apos;t have a website</span> yet.
-          </h1>
-          <p className="mt-4 text-[15px] leading-relaxed text-white/60">
-            Run a niche campaign anywhere in the world by postal code. WeClick AI CRM
-            surfaces the leads, tracks the pipeline, and gets you to &quot;paid&quot;.
-          </p>
-        </div>
-        <p className="text-xs text-white/40">© {new Date().getFullYear()} WeClick AI</p>
-      </div>
+    <div className="grid min-h-screen place-items-center px-6" style={{ background: "var(--charcoal)" }}>
+      <div className="w-full max-w-md rounded-xl2 bg-white p-8">
+        <Logo />
 
-      {/* right — form */}
-      <div className="flex items-center justify-center p-6 sm:p-12">
-        <div className="w-full max-w-sm">
-          <div className="mb-8 lg:hidden"><Logo /></div>
-          <h2 className="font-display text-2xl font-semibold">
-            {mode === "signin" ? "Sign in" : "Create your account"}
-          </h2>
-          <p className="mt-1 text-sm text-muted">
-            {mode === "signin"
-              ? "Welcome back — pick up where you left off."
-              : "The first account becomes the admin."}
-          </p>
+        <h1 className="mt-6 font-display text-2xl font-semibold">
+          {brokenSignup ? "Your account needs setting up" : "Waiting for approval"}
+        </h1>
 
-          <form onSubmit={submit} className="mt-6 space-y-4">
-            {mode === "signup" && (
-              <div>
-                <label className="label">Full name</label>
-                <input className="input" value={fullName}
-                       onChange={(e) => setFullName(e.target.value)} placeholder="Teja" required />
-              </div>
-            )}
-            <div>
-              <label className="label">Work email</label>
-              <input className="input" type="email" value={email}
-                     onChange={(e) => setEmail(e.target.value)} placeholder="you@weclick.ai" required />
-            </div>
-            <div>
-              <label className="label">Password</label>
-              <input className="input" type="password" value={password}
-                     onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required minLength={6} />
-            </div>
+        <p className="mt-3 text-[15px] leading-relaxed text-muted">
+          {brokenSignup ? (
+            <>
+              Your sign-in worked, but there&apos;s no team record attached to it yet.
+              An admin needs to finish adding you before you can get in.
+            </>
+          ) : (
+            <>
+              You&apos;re signed in as <span className="text-ink">{user.email}</span>.
+              An admin has to approve your access before you can see the CRM. You&apos;ll
+              be in as soon as they do — no need to sign up again.
+            </>
+          )}
+        </p>
 
-            {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-            {notice && <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p>}
+        <p className="mt-6 rounded-lg bg-black/[0.03] px-4 py-3 text-sm text-muted">
+          Need this sorted quickly? Message the person who asked you to join.
+        </p>
 
-            <button type="submit" className="btn-primary w-full" disabled={loading}>
-              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
-              {mode === "signin" ? "Sign in" : "Create account"}
-            </button>
-          </form>
-
-          <p className="mt-6 text-center text-sm text-muted">
-            {mode === "signin" ? "No account yet?" : "Already have an account?"}{" "}
-            <button
-              className="font-medium text-copper hover:underline"
-              onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(null); }}
-            >
-              {mode === "signin" ? "Create one" : "Sign in"}
-            </button>
-          </p>
+        <div className="mt-6 flex items-center justify-between">
+          <SignOutButton />
+          <a href="/pending" className="text-sm font-medium text-copper hover:underline">
+            Check again
+          </a>
         </div>
       </div>
     </div>
