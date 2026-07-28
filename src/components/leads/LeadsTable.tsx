@@ -149,10 +149,13 @@ export function LeadsTable({
           <div className="px-5 py-16 text-center text-sm text-muted">No leads match these filters.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="group/table w-full">
               <thead><tr className="border-b border-line">
                 <th className="th w-10">
-                  <input type="checkbox" className="h-4 w-4 accent-copper"
+                  <input type="checkbox"
+                         className={`h-4 w-4 accent-copper transition-opacity
+                                     ${selected.size > 0 ? "opacity-100" : "opacity-0 focus:opacity-100"}
+                                     group-hover/table:opacity-100`}
                          checked={allOnPage} onChange={toggleAllOnPage}
                          aria-label="Select every lead on this page" />
                 </th>
@@ -162,10 +165,14 @@ export function LeadsTable({
               </tr></thead>
               <tbody>
                 {leads.map((l) => (
-                  <tr key={l.id} className={`border-b border-line last:border-0 hover:bg-black/[0.015]
+                  <tr key={l.id} className={`group/row border-b border-line last:border-0 hover:bg-black/[0.015]
                                              ${selected.has(l.id) ? "bg-copper-soft/40" : ""}`}>
                     <td className="td">
-                      <input type="checkbox" className="h-4 w-4 accent-copper"
+                      <input type="checkbox"
+                             className={`h-4 w-4 accent-copper transition-opacity
+                                         ${selected.has(l.id) || selected.size > 0
+                                           ? "opacity-100"
+                                           : "opacity-0 focus:opacity-100 group-hover/row:opacity-100"}`}
                              checked={selected.has(l.id)} onChange={() => toggle(l.id)}
                              aria-label={`Select ${l.business_name}`} />
                     </td>
