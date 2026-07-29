@@ -1,29 +1,55 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Logo } from "@/components/Logo";
-import { money } from "@/lib/utils";
-import type { Invoice, InvoiceStatus } from "@/lib/types";
-import { ArrowLeft, Printer, Check, Send, Ban, Trash2, ExternalLink, Loader2, IndianRupee } from "lucide-react";
+import { money, cx } from "@/lib/utils";
+import type { Invoice, CompanySettings } from "@/lib/types";
+import {
+  ArrowLeft, Printer, Check, Send, Ban, Trash2, Loader2, Mail, ExternalLink,
+} from "lucide-react";
 
 const METHODS = ["Bank transfer", "UPI", "Cash", "Card", "Cheque", "Razorpay"];
-
 const FINANCE_URL =
   process.env.NEXT_PUBLIC_FINANCE_URL ?? "https://weclick-ai-finance.vercel.app";
 
-export function InvoiceDetailClient({ invoice: initial }: { invoice: Invoice }) {
+const BADGE: Record<string, { label: string; cls: string }> = {
+  draft:          { label: "Draft",       cls: "bg-black/5 text-muted" },
+  sent:           { label: "Pending",     cls: "bg-amber-100 text-amber-800" },
+  partially_paid: { label: "Part paid",   cls: "bg-amber-100 text-amber-800" },
+  paid:           { label: "Paid",        cls: "bg-emerald-100 text-emerald-800" },
+  void:           { label: "Void",        cls: "bg-black/5 text-muted line-through" },
+  written_off:    { label: "Written off", cls: "bg-black/5 text-muted line-through" },
+};
+
+function fmtDate(d: string | null) {
+  if (!d) return "—";
+  return new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
+
+export function InvoiceDetailClient({
+  invoice: initial,
+  company,
+  autoPrint = false,
+}: {
+  invoice: Invoice;
+  company: CompanySettings | null;
+  autoPrint?: boolean;
+}) {
   const supabase = createClient();
   const router = useRouter();
   const [inv, setInv] = useState<Invoice>(initial);
+  const [error, setError] = useState<string | null>(null);
+
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  const balance = Number(inv.total) - Number(inv.amount_paid ?? 0);
   const [payOpen, setPayOpen] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [payAmount, setPayAmount] = useState(String(balance > 0 ? balance : ""));
   const [payDate, setPayDate] = useState(() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -31,13 +57,20 @@ export function InvoiceDetailClient({ invoice: initial }: { invoice: Invoice }) 
   const [payMethod, setPayMethod] = useState(METHODS[0]);
   const [payRef, setPayRef] = useState("");
 
-  const balance = Number(inv.total) - Number(inv.amount_paid);
-  const [payAmount, setPayAmount] = useState(String(balance > 0 ? balance : ""));
+  useEffect(() => {
+    if (autoPrint) setTimeout(() => window.print(), 400);
+  }, [autoPrint]);
 
-  /** Hard delete. Payments cascade; use Void instead if the invoice was ever issued. */
+  const badge = BADGE[inv.status] ?? { label: inv.status, cls: "bg-black/5 text-ink" };
+
+  async function setStatus(status: Invoice["status"]) {
+    setInv((i) => ({ ...i, status }));
+    await supabase.from("invoices").update({ status }).eq("id", inv.id);
+    router.refresh();
+  }
+
   async function remove() {
     setDeleting(true);
-    setError(null);
     const { error: err } = await supabase.from("invoices").delete().eq("id", inv.id);
     if (err) { setDeleting(false); setError(err.message); return; }
     router.push("/invoices");
@@ -45,11 +78,9 @@ export function InvoiceDetailClient({ invoice: initial }: { invoice: Invoice }) 
   }
 
   /**
-   * Payments are recorded as invoice_payments rows — never by setting
-   * status directly. A database trigger (on_invoice_payment) recalculates
-   * amount_paid, status and paid_at from the payment rows, and the Finance
-   * app reads those same rows for Money in. Flipping status by hand here
-   * would mark the invoice paid while Finance showed no money arriving.
+   * Payments are recorded as invoice_payments rows, never by setting status by
+   * hand. A trigger recalculates amount_paid, status and paid_at from those
+   * rows, and the Finance app reads the same rows for Money in.
    */
   async function recordPayment() {
     const amt = Number(payAmount);
@@ -58,18 +89,11 @@ export function InvoiceDetailClient({ invoice: initial }: { invoice: Invoice }) 
     setError(null);
     const { data: { user } } = await supabase.auth.getUser();
     const { error: err } = await supabase.from("invoice_payments").insert({
-      invoice_id: inv.id,
-      amount: amt,
-      paid_on: payDate,
-      method: payMethod,
-      reference: payRef.trim() || null,
-      recorded_by: user?.id ?? null,
+      invoice_id: inv.id, amount: amt, paid_on: payDate,
+      method: payMethod, reference: payRef.trim() || null, recorded_by: user?.id ?? null,
     });
     if (err) { setPaying(false); setError(err.message); return; }
-
-    // Re-read the row so we pick up whatever the trigger just wrote.
-    const { data: fresh } = await supabase
-      .from("invoices").select("*").eq("id", inv.id).single();
+    const { data: fresh } = await supabase.from("invoices").select("*").eq("id", inv.id).single();
     setPaying(false);
     if (fresh) setInv(fresh as Invoice);
     setPayOpen(false);
@@ -77,47 +101,55 @@ export function InvoiceDetailClient({ invoice: initial }: { invoice: Invoice }) 
     router.refresh();
   }
 
-  async function setStatus(status: InvoiceStatus) {
-    const patch: any = { status };
-    if (status === "paid") patch.paid_at = new Date().toISOString();
-    setInv((i) => ({ ...i, ...patch }));
-    await supabase.from("invoices").update(patch).eq("id", inv.id);
-    router.refresh();
-  }
+  const bankLines = company
+    ? [
+        company.bank_name && `Bank: ${company.bank_name}`,
+        company.account_name && `Account name: ${company.account_name}`,
+        company.account_number && `Account no: ${company.account_number}`,
+        company.ifsc && `IFSC: ${company.ifsc}`,
+        company.swift && `SWIFT: ${company.swift}`,
+        company.upi && `UPI: ${company.upi}`,
+      ].filter(Boolean) as string[]
+    : [];
 
   return (
     <>
-      <div className="mb-4 flex items-center justify-between print:hidden">
+      {/* toolbar */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 print:hidden">
         <Link href="/invoices" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink">
           <ArrowLeft className="h-4 w-4" /> Invoices
         </Link>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button className="btn-outline" onClick={() => window.print()}>
-            <Printer className="h-4 w-4" /> Print / PDF
+            <Printer className="h-4 w-4" /> Download PDF
           </button>
           {inv.status === "draft" && (
             <button className="btn-outline" onClick={() => setStatus("sent")}>
               <Send className="h-4 w-4" /> Mark sent
             </button>
           )}
-          {inv.status !== "paid" && inv.status !== "void" && inv.status !== "written_off" && (
+          <button
+            className="btn-outline text-muted"
+            title="Email delivery isn't wired up yet — needs a verified sending domain"
+            onClick={() =>
+              setError("Email sending isn't configured yet. Download the PDF and attach it for now.")
+            }
+          >
+            <Mail className="h-4 w-4" /> Send by email
+          </button>
+          {!["paid", "void", "written_off"].includes(inv.status) && (
             <button className="btn-primary" onClick={() => setPayOpen((v) => !v)}>
-              <IndianRupee className="h-4 w-4" /> Record payment
+              <Check className="h-4 w-4" /> Mark as paid
             </button>
           )}
-          {inv.status === "paid" && (
-            <span className="chip bg-emerald-100 text-emerald-800">
-              <Check className="h-3.5 w-3.5" /> Paid in full
-            </span>
-          )}
-          {inv.status !== "void" && inv.status !== "paid" && (
+          {!["paid", "void"].includes(inv.status) && (
             <button className="btn-ghost text-muted" onClick={() => setStatus("void")}>
               <Ban className="h-4 w-4" /> Void
             </button>
           )}
           <a href={`${FINANCE_URL}/invoices/${inv.id}`} target="_blank" rel="noopener noreferrer"
-             className="btn-outline" title="Full invoice document, payments and email">
-            <ExternalLink className="h-4 w-4" /> Open in Finance
+             className="btn-ghost text-muted" title="Open in Finance">
+            <ExternalLink className="h-4 w-4" />
           </a>
           {confirming ? (
             <span className="inline-flex items-center gap-2">
@@ -125,12 +157,10 @@ export function InvoiceDetailClient({ invoice: initial }: { invoice: Invoice }) 
                 {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                 Delete for good
               </button>
-              <button className="btn-ghost text-muted" onClick={() => setConfirming(false)} disabled={deleting}>
-                Cancel
-              </button>
+              <button className="btn-ghost text-muted" onClick={() => setConfirming(false)}>Cancel</button>
             </span>
           ) : (
-            <button className="btn-ghost text-muted" onClick={() => setConfirming(true)} title="Delete permanently">
+            <button className="btn-ghost text-muted" onClick={() => setConfirming(true)} title="Delete">
               <Trash2 className="h-4 w-4" />
             </button>
           )}
@@ -139,10 +169,9 @@ export function InvoiceDetailClient({ invoice: initial }: { invoice: Invoice }) 
 
       {payOpen && (
         <div className="card mx-auto mb-3 max-w-3xl p-5 print:hidden">
-          <p className="font-display text-base font-semibold">Record a payment</p>
+          <p className="font-display text-base font-semibold">Record the payment</p>
           <p className="mt-1 text-sm text-muted">
-            Shows up under Money in on Finance straight away. Part payments are
-            fine — the balance stays outstanding.
+            Appears under Money in on Finance straight away. Part payments are fine.
           </p>
           <div className="mt-4 grid gap-3 sm:grid-cols-4">
             <div>
@@ -157,8 +186,7 @@ export function InvoiceDetailClient({ invoice: initial }: { invoice: Invoice }) 
             </div>
             <div>
               <label className="label">Method</label>
-              <select className="input" value={payMethod}
-                      onChange={(e) => setPayMethod(e.target.value)}>
+              <select className="input" value={payMethod} onChange={(e) => setPayMethod(e.target.value)}>
                 {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
@@ -181,73 +209,142 @@ export function InvoiceDetailClient({ invoice: initial }: { invoice: Invoice }) 
       )}
 
       {error && (
-        <p className="mx-auto mb-3 max-w-3xl rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 print:hidden">
+        <p className="mx-auto mb-3 max-w-3xl rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 print:hidden">
           {error}
         </p>
       )}
 
-      <div className="card mx-auto max-w-3xl p-8 print:border-0 print:shadow-none">
-        <div className="flex items-start justify-between">
-          <Logo />
+      {/* the document */}
+      <div className="card mx-auto max-w-3xl bg-white p-8 sm:p-10 print:max-w-none print:border-0 print:p-0 print:shadow-none">
+        <div className="flex flex-wrap items-start justify-between gap-6">
+          <div>
+            <Logo />
+            <div className="mt-3 space-y-0.5 text-[13px] leading-relaxed text-muted">
+              {company?.address && <p className="whitespace-pre-line">{company.address}</p>}
+              {company?.email && <p>{company.email}</p>}
+              {company?.phone && <p>{company.phone}</p>}
+              {company?.gstin && <p>GSTIN: {company.gstin}</p>}
+              {company?.pan && <p>PAN: {company.pan}</p>}
+            </div>
+          </div>
           <div className="text-right">
-            <p className="font-display text-2xl font-semibold">Invoice</p>
-            <p className="text-sm text-muted">{inv.number}</p>
-            <div className="mt-1"><StatusBadge status={inv.status} /></div>
+            <p className="font-display text-3xl font-semibold tracking-tight">Invoice</p>
+            <p className="mt-1 text-sm text-muted">{inv.number}</p>
+            <span className={cx("chip mt-2", badge.cls)}>{badge.label}</span>
           </div>
         </div>
 
-        <div className="mt-8 grid grid-cols-2 gap-6 text-sm">
+        <div className="mt-10 grid gap-6 sm:grid-cols-2">
           <div>
             <p className="label">Billed to</p>
             <p className="font-medium">{inv.client_name}</p>
-            {inv.client_email && <p className="text-muted">{inv.client_email}</p>}
+            <div className="mt-0.5 space-y-0.5 text-[13px] leading-relaxed text-muted">
+              {inv.client_company && <p>{inv.client_company}</p>}
+              {inv.client_address && <p className="whitespace-pre-line">{inv.client_address}</p>}
+              {inv.client_email && <p>{inv.client_email}</p>}
+              {inv.client_phone && <p>{inv.client_phone}</p>}
+            </div>
           </div>
-          <div className="text-right">
-            {inv.due_date && <p><span className="text-muted">Due: </span>{inv.due_date}</p>}
-            {inv.paid_at && <p className="text-emerald-700">Paid {new Date(inv.paid_at).toLocaleDateString("en-IN")}</p>}
+          <div className="sm:text-right">
+            <div className="inline-block space-y-1 text-[13px]">
+              <p><span className="text-muted">Invoice date: </span>{fmtDate(inv.issued_on ?? inv.issued_at)}</p>
+              <p><span className="text-muted">Due date: </span>{fmtDate(inv.due_date)}</p>
+              {inv.paid_at && (
+                <p className="text-emerald-700">Paid {fmtDate(inv.paid_at)}</p>
+              )}
+            </div>
           </div>
         </div>
 
-        <table className="mt-8 w-full text-sm">
-          <thead><tr className="border-b border-line">
-            <th className="th">Description</th>
-            <th className="th text-right">Qty</th>
-            <th className="th text-right">Rate</th>
-            <th className="th text-right">Amount</th>
-          </tr></thead>
+        <table className="mt-10 w-full text-sm">
+          <thead>
+            <tr className="border-b-2 border-ink/10">
+              <th className="th">Service</th>
+              <th className="th text-right">Qty</th>
+              <th className="th text-right">Unit price</th>
+              <th className="th text-right">Amount</th>
+            </tr>
+          </thead>
           <tbody>
             {inv.line_items.map((l, i) => (
               <tr key={i} className="border-b border-line">
                 <td className="td">{l.desc}</td>
-                <td className="td text-right">{l.qty}</td>
-                <td className="td text-right">{money(l.rate, inv.currency)}</td>
-                <td className="td text-right">{money(l.qty * l.rate, inv.currency)}</td>
+                <td className="td text-right tabular-nums">{l.qty}</td>
+                <td className="td text-right tabular-nums">{money(l.rate, inv.currency)}</td>
+                <td className="td text-right tabular-nums">{money(l.qty * l.rate, inv.currency)}</td>
               </tr>
             ))}
           </tbody>
         </table>
 
-        <div className="mt-4 ml-auto max-w-xs space-y-1 text-sm">
-          <div className="flex justify-between"><span className="text-muted">Subtotal</span><span>{money(Number(inv.subtotal), inv.currency)}</span></div>
-          <div className="flex justify-between"><span className="text-muted">Tax ({inv.tax_percent}%)</span><span>{money(Number(inv.total) - Number(inv.subtotal), inv.currency)}</span></div>
-          <div className="flex justify-between border-t border-line pt-2 text-base font-semibold">
-            <span>Total</span><span>{money(Number(inv.total), inv.currency)}</span>
+        <div className="mt-5 flex justify-end">
+          <div className="w-full max-w-xs space-y-1.5 text-sm">
+            <div className="flex justify-between">
+              <span className="text-muted">Subtotal</span>
+              <span className="tabular-nums">{money(Number(inv.subtotal), inv.currency)}</span>
+            </div>
+            <div className="flex items-baseline justify-between border-t-2 border-ink/10 pt-2">
+              <span className="font-medium">Total</span>
+              <span className="font-display text-xl font-semibold tabular-nums">
+                {money(Number(inv.total), inv.currency)}
+              </span>
+            </div>
+            {Number(inv.amount_paid ?? 0) > 0 && balance > 0 && (
+              <>
+                <div className="flex justify-between text-emerald-700">
+                  <span>Paid so far</span>
+                  <span className="tabular-nums">{money(Number(inv.amount_paid), inv.currency)}</span>
+                </div>
+                <div className="flex justify-between font-medium">
+                  <span>Balance due</span>
+                  <span className="tabular-nums">{money(balance, inv.currency)}</span>
+                </div>
+              </>
+            )}
           </div>
-          {Number(inv.amount_paid) > 0 && Number(inv.amount_paid) < Number(inv.total) && (
-            <>
-              <div className="flex justify-between text-emerald-700">
-                <span>Paid so far</span><span>{money(Number(inv.amount_paid), inv.currency)}</span>
-              </div>
-              <div className="flex justify-between font-medium">
-                <span>Balance due</span>
-                <span>{money(Number(inv.total) - Number(inv.amount_paid), inv.currency)}</span>
-              </div>
-            </>
-          )}
         </div>
 
-        {inv.notes && <p className="mt-8 border-t border-line pt-4 text-sm text-muted">{inv.notes}</p>}
+        {(inv.notes || bankLines.length > 0) && (
+          <div className="mt-10 grid gap-6 border-t border-line pt-6 text-[13px] sm:grid-cols-2">
+            {inv.notes && (
+              <div>
+                <p className="label">Notes</p>
+                <p className="whitespace-pre-line leading-relaxed text-muted">{inv.notes}</p>
+              </div>
+            )}
+            {bankLines.length > 0 && (
+              <div>
+                <p className="label">Payment details</p>
+                <div className="space-y-0.5 leading-relaxed text-muted">
+                  {bankLines.map((b) => <p key={b}>{b}</p>)}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {company?.default_terms && (
+          <p className="mt-6 text-[12px] leading-relaxed text-muted">{company.default_terms}</p>
+        )}
+
+        <div className="mt-14 flex justify-end">
+          <div className="w-56 text-center">
+            <div className="h-12 border-b border-ink/25" />
+            <p className="mt-2 text-[12px] text-muted">
+              Authorised signature<br />
+              {company?.legal_name ?? "WeClick AI"}
+            </p>
+          </div>
+        </div>
       </div>
+
+      {!company && (
+        <p className="mx-auto mt-3 max-w-3xl text-xs text-muted print:hidden">
+          Company address, GSTIN and bank details are blank because
+          Settings → Company &amp; invoice hasn&rsquo;t been filled in on the
+          Finance app yet. Fill it once and every invoice picks it up.
+        </p>
+      )}
     </>
   );
 }
