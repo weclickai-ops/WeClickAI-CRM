@@ -24,3 +24,8 @@ export function initials(name?: string | null, email?: string) {
   const base = name || email || "?";
   return base.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("");
 }
+
+export function fmtDay(iso: string | null) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" });
+}
