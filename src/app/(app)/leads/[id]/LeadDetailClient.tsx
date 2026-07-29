@@ -9,7 +9,7 @@ import { timeAgo } from "@/lib/utils";
 import {
   Phone, ArrowLeft, Send, FileText, Globe, MapPin, Mail, User, Instagram,
   Linkedin, Facebook, Youtube, MessageCircle, Image as ImageIcon, X,
-  Bell, Check, Loader2, AlertCircle, Repeat, PhoneCall, StickyNote,
+  Check, Loader2, AlertCircle, Repeat, PhoneCall, StickyNote,
 } from "lucide-react";
 
 const CALL_OUTCOMES = [
@@ -23,6 +23,22 @@ const GROUP_LABEL: Record<StageGroup, string> = {
   todo: "To-do", in_progress: "In progress", complete: "Complete",
 };
 const INTERVALS = [1, 2, 3, 5, 7, 14, 30];
+
+/** One-tap scheduling. Days from today. */
+const QUICK_FOLLOWUPS = [
+  { label: "Today", days: 0 },
+  { label: "Tomorrow", days: 1 },
+  { label: "+3 days", days: 3 },
+  { label: "Next week", days: 7 },
+];
+
+/**
+ * Local YYYY-MM-DD. Deliberately not toISOString() — that converts to UTC, so
+ * before 05:30 IST it hands back yesterday's date.
+ */
+function ymd(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 type FieldKey =
   | "person_name" | "email" | "website" | "whatsapp" | "instagram"
@@ -77,7 +93,7 @@ export function LeadDetailClient({
   const [outcome, setOutcome] = useState("connected");
   const [callNote, setCallNote] = useState("");
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = ymd(new Date());
   const overdue =
     lead.followups_enabled && lead.next_followup_at && lead.next_followup_at < today;
   const stage = stages.find((s) => s.id === lead.stage_id);
@@ -142,10 +158,11 @@ export function LeadDetailClient({
     router.refresh();
   }
 
-  function startFollowups() {
+  /** One tap: switch follow-ups on and set the next touch N days out. */
+  function scheduleIn(days: number) {
     const next = new Date();
-    next.setDate(next.getDate() + lead.followup_interval_days);
-    patch({ followups_enabled: true, next_followup_at: next.toISOString().slice(0, 10) }, "followup");
+    next.setDate(next.getDate() + days);
+    patch({ followups_enabled: true, next_followup_at: ymd(next) }, "followup");
   }
 
   return (
@@ -307,8 +324,25 @@ export function LeadDetailClient({
               )}
             </div>
 
+            {/* One tap here is what puts the lead on the Follow-ups page. */}
+            <div className="mt-3 grid grid-cols-4 gap-1.5">
+              {QUICK_FOLLOWUPS.map((q) => {
+                const on = lead.followups_enabled && lead.next_followup_at === ymd(
+                  (() => { const d = new Date(); d.setDate(d.getDate() + q.days); return d; })()
+                );
+                return (
+                  <button key={q.label}
+                          className={`btn-outline px-1 py-1.5 text-xs ${on ? "border-copper text-copper" : ""}`}
+                          onClick={() => scheduleIn(q.days)}
+                          disabled={saving === "followup"}>
+                    {q.label}
+                  </button>
+                );
+              })}
+            </div>
+
             {lead.followups_enabled ? (
-              <div className="mt-3 space-y-2.5">
+              <div className="mt-2.5 space-y-2.5">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="label">Next</label>
@@ -333,10 +367,10 @@ export function LeadDetailClient({
                 </button>
               </div>
             ) : (
-              <button className="btn-outline mt-3 w-full text-sm" onClick={startFollowups}
-                      disabled={saving === "followup"}>
-                <Bell className="h-4 w-4" /> Start following up
-              </button>
+              <p className="mt-2.5 text-xs leading-relaxed text-muted">
+                Not scheduled. Pick a day above and this lead appears under
+                Follow-ups until someone works it.
+              </p>
             )}
           </div>
 
