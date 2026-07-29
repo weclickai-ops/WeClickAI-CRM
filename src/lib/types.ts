@@ -86,7 +86,7 @@ export interface CompanySettings {
   id: number;
   legal_name: string; tagline: string | null; address: string | null;
   gstin: string | null; pan: string | null; email: string | null;
-  phone: string | null; logo_url: string | null;
+  phone: string | null; website: string | null; logo_url: string | null;
   bank_name: string | null; account_name: string | null;
   account_number: string | null; ifsc: string | null;
   swift: string | null; upi: string | null;
