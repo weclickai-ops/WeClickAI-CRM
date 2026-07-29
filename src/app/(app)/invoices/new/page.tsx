@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "../../PageHeader";
 import { money } from "@/lib/utils";
+import { Logo } from "@/components/Logo";
+import type { CompanySettings } from "@/lib/types";
 import { Plus, Trash2, Loader2, Search, Check, X } from "lucide-react";
 
 type Line = { desc: string; qty: number; rate: number };
@@ -46,11 +48,25 @@ export default function NewInvoicePage() {
     "Thank you for choosing WeClick AI. Looking forward to working with you."
   );
 
+  // Bill From is read-only and always the live Company Profile, so an invoice
+  // raised today can never carry last month's address.
+  const [company, setCompany] = useState<CompanySettings | null | undefined>(undefined);
+
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<LeadHit[]>([]);
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase
+      .from("company_settings")
+      .select("*")
+      .eq("id", 1)
+      .maybeSingle()
+      .then(({ data }) => setCompany((data as CompanySettings) ?? null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Arriving from a lead page — fill straight away.
   useEffect(() => {
@@ -170,8 +186,41 @@ export default function NewInvoicePage() {
 
       <div className="grid gap-5 lg:grid-cols-[1fr_20rem]">
         <div className="space-y-5">
-          {/* client */}
-          <div className="card p-5">
+          {/* from + client */}
+          <div className="grid gap-5 lg:grid-cols-[15rem_1fr]">
+            {/* from — read-only, pulled from Settings → Company profile */}
+            <div className="card p-5">
+              <p className="font-display text-base font-semibold">
+                From{company?.legal_name ? ` (${company.legal_name})` : ""}
+              </p>
+              <div className="mt-3"><Logo /></div>
+
+              {company === undefined && (
+                <p className="mt-3 text-[13px] text-muted">Loading company details…</p>
+              )}
+
+              {company === null && (
+                <p className="mt-3 text-[13px] leading-relaxed text-muted">
+                  No company profile set yet. Fill it in once under
+                  Settings &rarr; Company &amp; invoice and every invoice picks
+                  it up automatically.
+                </p>
+              )}
+
+              {company && (
+                <div className="mt-3 space-y-1 text-[13px] leading-relaxed text-muted">
+                  <p className="font-medium text-ink">{company.legal_name}</p>
+                  {company.address && <p className="whitespace-pre-line">{company.address}</p>}
+                  {company.phone && <p>{company.phone}</p>}
+                  {company.email && <p>{company.email}</p>}
+                  {company.website && <p>{company.website}</p>}
+                  {company.gstin && <p>GSTIN: {company.gstin}</p>}
+                </div>
+              )}
+            </div>
+
+            {/* client */}
+            <div className="card p-5">
             <p className="font-display text-base font-semibold">Client</p>
 
             {!leadId && (
@@ -239,6 +288,7 @@ export default function NewInvoicePage() {
                 <label className="label">Billing address</label>
                 <input className="input" value={clientAddress} onChange={(e) => setClientAddress(e.target.value)} />
               </div>
+            </div>
             </div>
           </div>
 
