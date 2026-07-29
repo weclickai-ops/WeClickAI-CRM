@@ -218,11 +218,14 @@ export function InvoiceDetailClient({
       <div className="card mx-auto max-w-3xl bg-white p-8 sm:p-10 print:max-w-none print:border-0 print:p-0 print:shadow-none">
         <div className="flex flex-wrap items-start justify-between gap-6">
           <div>
-            <Logo />
-            <div className="mt-3 space-y-0.5 text-[13px] leading-relaxed text-muted">
+            <p className="label">From</p>
+            <div className="mt-1"><Logo /></div>
+            <div className="mt-2 space-y-0.5 text-[13px] leading-relaxed text-muted">
+              {company?.legal_name && <p className="font-medium text-ink">{company.legal_name}</p>}
               {company?.address && <p className="whitespace-pre-line">{company.address}</p>}
-              {company?.email && <p>{company.email}</p>}
               {company?.phone && <p>{company.phone}</p>}
+              {company?.email && <p>{company.email}</p>}
+              {company?.website && <p>{company.website}</p>}
               {company?.gstin && <p>GSTIN: {company.gstin}</p>}
               {company?.pan && <p>PAN: {company.pan}</p>}
             </div>
