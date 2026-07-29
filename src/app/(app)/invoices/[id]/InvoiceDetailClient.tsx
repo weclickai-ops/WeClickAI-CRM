@@ -106,6 +106,14 @@ export function InvoiceDetailClient({
   // The account picked on this invoice wins; company_settings is the fallback
   // for anything raised before bank accounts existed.
   const payTo = bank ?? company;
+  const contacts = Array.isArray(company?.contacts) ? company!.contacts : [];
+
+  // One point per line in settings becomes one numbered clause here.
+  const terms = (company?.default_terms ?? "")
+    .split(/\r?\n/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+
   const bankLines = payTo
     ? [
         payTo.bank_name && `Bank: ${payTo.bank_name}`,
@@ -229,6 +237,11 @@ export function InvoiceDetailClient({
               {company?.legal_name && <p className="font-medium text-ink">{company.legal_name}</p>}
               {company?.address && <p className="whitespace-pre-line">{company.address}</p>}
               {company?.phone && <p>{company.phone}</p>}
+              {contacts.map((c) => (
+                <p key={`${c.name}-${c.phone}`}>
+                  {c.name}{c.role ? ` (${c.role})` : ""}{c.name && c.phone ? " · " : ""}{c.phone}
+                </p>
+              ))}
               {company?.email && <p>{company.email}</p>}
               {company?.website && <p>{company.website}</p>}
               {company?.gstin && <p>GSTIN: {company.gstin}</p>}
@@ -312,32 +325,40 @@ export function InvoiceDetailClient({
           </div>
         </div>
 
-        {(inv.notes || bankLines.length > 0) && (
-          <div className="mt-10 grid gap-6 border-t border-line pt-6 text-[13px] sm:grid-cols-2">
-            {inv.notes && (
-              <div>
-                <p className="label">Notes</p>
-                <p className="whitespace-pre-line leading-relaxed text-muted">{inv.notes}</p>
-              </div>
-            )}
-            {bankLines.length > 0 && (
-              <div>
-                <p className="label">Payment details</p>
-                <div className="space-y-0.5 leading-relaxed text-muted">
-                  {bankLines.map((b) => <p key={b}>{b}</p>)}
-                </div>
-              </div>
-            )}
+        {bankLines.length > 0 && (
+          <div className="mt-10 border-t border-line pt-6 text-[13px]">
+            <p className="label">Payment details</p>
+            <div className="space-y-0.5 leading-relaxed text-muted">
+              {bankLines.map((b) => <p key={b}>{b}</p>)}
+              {company?.website && <p className="pt-1">{company.website}</p>}
+            </div>
           </div>
         )}
 
-        {company?.default_terms && (
-          <p className="mt-6 text-[12px] leading-relaxed text-muted">{company.default_terms}</p>
+        {inv.notes && (
+          <p className="mt-6 whitespace-pre-line text-[13px] leading-relaxed text-muted">
+            {inv.notes}
+          </p>
+        )}
+
+        {terms.length > 0 && (
+          <div className="mt-8 border-t border-line pt-5">
+            <p className="label">Terms &amp; conditions</p>
+            <ol className="mt-1 list-decimal space-y-1 pl-4 text-[12px] leading-relaxed text-muted">
+              {terms.map((t, i) => <li key={i}>{t}</li>)}
+            </ol>
+          </div>
         )}
 
         <div className="mt-14 flex justify-end">
           <div className="w-56 text-center">
-            <div className="h-12 border-b border-ink/25" />
+            <div className="flex h-12 items-end justify-center">
+              {company?.signature_url && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={company.signature_url} alt="" className="max-h-11 object-contain" />
+              )}
+            </div>
+            <div className="border-b border-ink/25" />
             <p className="mt-2 text-[12px] text-muted">
               Authorised signature<br />
               {company?.legal_name ?? "WeClick AI"}
