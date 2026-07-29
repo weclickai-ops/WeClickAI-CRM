@@ -82,6 +82,10 @@ export interface CustomField {
   options: string[]; required: boolean; position: number;
 }
 
+export interface CompanyContact {
+  name: string; phone: string; email?: string; role?: string;
+}
+
 export interface CompanySettings {
   id: number;
   legal_name: string; tagline: string | null; address: string | null;
@@ -92,6 +96,8 @@ export interface CompanySettings {
   swift: string | null; upi: string | null;
   invoice_prefix: string; next_number: number; number_padding: number;
   default_terms: string | null; base_currency: string;
+  contacts: CompanyContact[];
+  signature_url: string | null;
 }
 
 export interface BankAccount {
