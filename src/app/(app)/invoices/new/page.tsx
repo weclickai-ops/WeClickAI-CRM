@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PageHeader } from "../../PageHeader";
 import { money } from "@/lib/utils";
 import { Logo } from "@/components/Logo";
-import type { CompanySettings } from "@/lib/types";
+import type { CompanySettings, BankAccount } from "@/lib/types";
 import { Plus, Trash2, Loader2, Search, Check, X } from "lucide-react";
 
 type Line = { desc: string; qty: number; rate: number };
@@ -51,6 +51,8 @@ export default function NewInvoicePage() {
   // Bill From is read-only and always the live Company Profile, so an invoice
   // raised today can never carry last month's address.
   const [company, setCompany] = useState<CompanySettings | null | undefined>(undefined);
+  const [banks, setBanks] = useState<BankAccount[]>([]);
+  const [bankId, setBankId] = useState<string>("");
 
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<LeadHit[]>([]);
@@ -65,6 +67,18 @@ export default function NewInvoicePage() {
       .eq("id", 1)
       .maybeSingle()
       .then(({ data }) => setCompany((data as CompanySettings) ?? null));
+
+    supabase
+      .from("bank_accounts")
+      .select("*")
+      .eq("active", true)
+      .order("created_at")
+      .then(({ data }) => {
+        const rows = (data ?? []) as BankAccount[];
+        setBanks(rows);
+        // pre-select the default so raising an invoice stays a one-minute job
+        setBankId(rows.find((b) => b.is_default)?.id ?? rows[0]?.id ?? "");
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -162,6 +176,7 @@ export default function NewInvoicePage() {
         status,
         issued_on: issuedOn,
         issued_at: new Date().toISOString(),
+        bank_account_id: bankId || null,
         due_date: dueDate || null,
         notes: notes.trim() || null,
         created_by: user?.id,
@@ -405,6 +420,21 @@ export default function NewInvoicePage() {
                   </select>
                 </div>
               </div>
+
+              {banks.length > 0 && (
+                <div>
+                  <label className="label">Pay into</label>
+                  <select className="input" value={bankId} onChange={(e) => setBankId(e.target.value)}>
+                    {banks.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.label}{b.currency !== "INR" ? ` · ${b.currency}` : ""}
+                      </option>
+                    ))}
+                    <option value="">No bank details</option>
+                  </select>
+                  <p className="mt-1 text-xs text-muted">Printed on the invoice as payment details.</p>
+                </div>
+              )}
             </div>
           </div>
 
