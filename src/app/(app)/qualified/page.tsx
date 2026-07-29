@@ -11,6 +11,8 @@ export const dynamic = "force-dynamic";
 export default async function QualifiedPage({ searchParams }: { searchParams: Promise<Record<string,string>> }) {
   const sp = await searchParams;
   const supabase = await createClient();
+  const now = new Date();
+  const todayYmd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   const { data: team } = await supabase.from("profiles").select("id, full_name, email");
   const teamMap = new Map((team ?? []).map((t: any) => [t.id, t.full_name ?? t.email]));
 
@@ -54,8 +56,8 @@ export default async function QualifiedPage({ searchParams }: { searchParams: Pr
                   </td>
                   <td className="td text-sm text-muted">{teamMap.get(l.assigned_to ?? "") ?? "Unassigned"}</td>
                   <td className="td text-sm">
-                    {l.follow_up_date
-                      ? <span className={new Date(l.follow_up_date) < new Date() ? "text-red-600" : ""}>{fmtDay(l.follow_up_date)}</span>
+                    {l.followups_enabled && l.next_followup_at
+                      ? <span className={l.next_followup_at < todayYmd ? "font-medium text-red-600" : ""}>{fmtDay(l.next_followup_at)}</span>
                       : <Link href={`/leads/${l.id}`} className="inline-flex items-center gap-1 text-muted hover:text-copper">
                           <CalendarPlus className="h-3.5 w-3.5" /> set
                         </Link>}
