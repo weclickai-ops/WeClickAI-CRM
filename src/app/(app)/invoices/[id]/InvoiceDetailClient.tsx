@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Logo } from "@/components/Logo";
 import { money, cx } from "@/lib/utils";
-import type { Invoice, CompanySettings } from "@/lib/types";
+import type { Invoice, CompanySettings, BankAccount } from "@/lib/types";
 import {
   ArrowLeft, Printer, Check, Send, Ban, Trash2, Loader2, Mail, ExternalLink,
 } from "lucide-react";
@@ -32,10 +32,12 @@ function fmtDate(d: string | null) {
 export function InvoiceDetailClient({
   invoice: initial,
   company,
+  bank,
   autoPrint = false,
 }: {
   invoice: Invoice;
   company: CompanySettings | null;
+  bank: BankAccount | null;
   autoPrint?: boolean;
 }) {
   const supabase = createClient();
@@ -101,14 +103,17 @@ export function InvoiceDetailClient({
     router.refresh();
   }
 
-  const bankLines = company
+  // The account picked on this invoice wins; company_settings is the fallback
+  // for anything raised before bank accounts existed.
+  const payTo = bank ?? company;
+  const bankLines = payTo
     ? [
-        company.bank_name && `Bank: ${company.bank_name}`,
-        company.account_name && `Account name: ${company.account_name}`,
-        company.account_number && `Account no: ${company.account_number}`,
-        company.ifsc && `IFSC: ${company.ifsc}`,
-        company.swift && `SWIFT: ${company.swift}`,
-        company.upi && `UPI: ${company.upi}`,
+        payTo.bank_name && `Bank: ${payTo.bank_name}`,
+        payTo.account_name && `Account name: ${payTo.account_name}`,
+        payTo.account_number && `Account no: ${payTo.account_number}`,
+        payTo.ifsc && `IFSC: ${payTo.ifsc}`,
+        payTo.swift && `SWIFT: ${payTo.swift}`,
+        payTo.upi && `UPI: ${payTo.upi}`,
       ].filter(Boolean) as string[]
     : [];
 
