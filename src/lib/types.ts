@@ -94,11 +94,19 @@ export interface CompanySettings {
   default_terms: string | null; base_currency: string;
 }
 
+export interface BankAccount {
+  id: string; label: string;
+  bank_name: string; account_name: string; account_number: string;
+  ifsc: string | null; swift: string | null; upi: string | null;
+  currency: string; is_default: boolean; active: boolean; created_at: string;
+}
+
 export interface Invoice {
   id: string; number: string; lead_id: string | null; client_name: string;
   client_email: string | null; client_phone: string | null;
   client_company: string | null; client_address: string | null;
   issued_on: string | null; currency: string;
+  bank_account_id: string | null;
   line_items: { desc: string; qty: number; rate: number }[];
   subtotal: number; tax_percent: number; total: number;
   status: InvoiceStatus; amount_paid: number; due_date: string | null; notes: string | null;
