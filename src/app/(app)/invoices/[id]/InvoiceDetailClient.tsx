@@ -8,7 +8,9 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Logo } from "@/components/Logo";
 import { money } from "@/lib/utils";
 import type { Invoice, InvoiceStatus } from "@/lib/types";
-import { ArrowLeft, Printer, Check, Send, Ban, Trash2, ExternalLink, Loader2 } from "lucide-react";
+import { ArrowLeft, Printer, Check, Send, Ban, Trash2, ExternalLink, Loader2, IndianRupee } from "lucide-react";
+
+const METHODS = ["Bank transfer", "UPI", "Cash", "Card", "Cheque", "Razorpay"];
 
 const FINANCE_URL =
   process.env.NEXT_PUBLIC_FINANCE_URL ?? "https://weclick-ai-finance.vercel.app";
@@ -20,6 +22,17 @@ export function InvoiceDetailClient({ invoice: initial }: { invoice: Invoice }) 
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [payOpen, setPayOpen] = useState(false);
+  const [paying, setPaying] = useState(false);
+  const [payDate, setPayDate] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
+  const [payMethod, setPayMethod] = useState(METHODS[0]);
+  const [payRef, setPayRef] = useState("");
+
+  const balance = Number(inv.total) - Number(inv.amount_paid);
+  const [payAmount, setPayAmount] = useState(String(balance > 0 ? balance : ""));
 
   /** Hard delete. Payments cascade; use Void instead if the invoice was ever issued. */
   async function remove() {
@@ -28,6 +41,39 @@ export function InvoiceDetailClient({ invoice: initial }: { invoice: Invoice }) 
     const { error: err } = await supabase.from("invoices").delete().eq("id", inv.id);
     if (err) { setDeleting(false); setError(err.message); return; }
     router.push("/invoices");
+    router.refresh();
+  }
+
+  /**
+   * Payments are recorded as invoice_payments rows — never by setting
+   * status directly. A database trigger (on_invoice_payment) recalculates
+   * amount_paid, status and paid_at from the payment rows, and the Finance
+   * app reads those same rows for Money in. Flipping status by hand here
+   * would mark the invoice paid while Finance showed no money arriving.
+   */
+  async function recordPayment() {
+    const amt = Number(payAmount);
+    if (!amt || amt <= 0) { setError("Enter an amount."); return; }
+    setPaying(true);
+    setError(null);
+    const { data: { user } } = await supabase.auth.getUser();
+    const { error: err } = await supabase.from("invoice_payments").insert({
+      invoice_id: inv.id,
+      amount: amt,
+      paid_on: payDate,
+      method: payMethod,
+      reference: payRef.trim() || null,
+      recorded_by: user?.id ?? null,
+    });
+    if (err) { setPaying(false); setError(err.message); return; }
+
+    // Re-read the row so we pick up whatever the trigger just wrote.
+    const { data: fresh } = await supabase
+      .from("invoices").select("*").eq("id", inv.id).single();
+    setPaying(false);
+    if (fresh) setInv(fresh as Invoice);
+    setPayOpen(false);
+    setPayRef("");
     router.refresh();
   }
 
@@ -54,10 +100,15 @@ export function InvoiceDetailClient({ invoice: initial }: { invoice: Invoice }) 
               <Send className="h-4 w-4" /> Mark sent
             </button>
           )}
-          {inv.status !== "paid" && inv.status !== "void" && (
-            <button className="btn-primary" onClick={() => setStatus("paid")}>
-              <Check className="h-4 w-4" /> Mark as paid
+          {inv.status !== "paid" && inv.status !== "void" && inv.status !== "written_off" && (
+            <button className="btn-primary" onClick={() => setPayOpen((v) => !v)}>
+              <IndianRupee className="h-4 w-4" /> Record payment
             </button>
+          )}
+          {inv.status === "paid" && (
+            <span className="chip bg-emerald-100 text-emerald-800">
+              <Check className="h-3.5 w-3.5" /> Paid in full
+            </span>
           )}
           {inv.status !== "void" && inv.status !== "paid" && (
             <button className="btn-ghost text-muted" onClick={() => setStatus("void")}>
@@ -85,6 +136,49 @@ export function InvoiceDetailClient({ invoice: initial }: { invoice: Invoice }) 
           )}
         </div>
       </div>
+
+      {payOpen && (
+        <div className="card mx-auto mb-3 max-w-3xl p-5 print:hidden">
+          <p className="font-display text-base font-semibold">Record a payment</p>
+          <p className="mt-1 text-sm text-muted">
+            Shows up under Money in on Finance straight away. Part payments are
+            fine — the balance stays outstanding.
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-4">
+            <div>
+              <label className="label">Amount</label>
+              <input className="input" inputMode="decimal" value={payAmount}
+                     onChange={(e) => setPayAmount(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Received on</label>
+              <input type="date" className="input" value={payDate}
+                     onChange={(e) => setPayDate(e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Method</label>
+              <select className="input" value={payMethod}
+                      onChange={(e) => setPayMethod(e.target.value)}>
+                {METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Reference</label>
+              <input className="input" placeholder="UTR / txn id" value={payRef}
+                     onChange={(e) => setPayRef(e.target.value)} />
+            </div>
+          </div>
+          <div className="mt-4 flex justify-end gap-2">
+            <button className="btn-ghost text-muted" onClick={() => setPayOpen(false)} disabled={paying}>
+              Cancel
+            </button>
+            <button className="btn-primary" onClick={recordPayment} disabled={paying}>
+              {paying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              Save payment
+            </button>
+          </div>
+        </div>
+      )}
 
       {error && (
         <p className="mx-auto mb-3 max-w-3xl rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 print:hidden">
