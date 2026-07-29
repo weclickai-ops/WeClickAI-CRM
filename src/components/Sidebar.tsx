@@ -9,8 +9,12 @@ import type { Profile } from "@/lib/types";
 import {
   LayoutDashboard, Users, KanbanSquare, Radar, FileText,
   Settings, LogOut, Sparkles, GitBranch, Wallet,
-  BadgeCheck, CalendarClock,
+  BadgeCheck, CalendarClock, ExternalLink,
 } from "lucide-react";
+
+/** The finance platform is a separate deployment on the same Supabase project. */
+const FINANCE_URL =
+  process.env.NEXT_PUBLIC_FINANCE_URL ?? "https://weclick-ai-finance.vercel.app";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -20,7 +24,6 @@ const NAV = [
   { href: "/pipeline",  label: "Pipeline",  icon: KanbanSquare },
   { href: "/campaigns", label: "Campaigns", icon: Radar },
   { href: "/invoices",  label: "Invoices",  icon: FileText },
-  { href: "/finance",   label: "Finance",   icon: Wallet },
 ];
 
 const SETTINGS = [
@@ -39,6 +42,15 @@ export function Sidebar({ profile }: { profile: Profile }) {
     router.push("/login");
     router.refresh();
   }
+
+  const ExternalItem = ({ href, label, icon: Icon }: { href: string; label: string; icon: any }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer"
+       className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-white/60 transition-colors hover:bg-white/5 hover:text-white">
+      <Icon className="h-[18px] w-[18px]" strokeWidth={2} />
+      <span className="flex-1">{label}</span>
+      <ExternalLink className="h-3.5 w-3.5 text-white/30" />
+    </a>
+  );
 
   const Item = ({ href, label, icon: Icon }: { href: string; label: string; icon: any }) => {
     const active = pathname === href || pathname.startsWith(href + "/");
@@ -60,6 +72,7 @@ export function Sidebar({ profile }: { profile: Profile }) {
 
       <nav className="flex-1 space-y-1 px-3">
         {NAV.map((n) => <Item key={n.href} {...n} />)}
+        <ExternalItem href={FINANCE_URL} label="Finance" icon={Wallet} />
 
         <p className="px-3 pb-1 pt-5 text-[10px] font-semibold uppercase tracking-wider text-white/30">
           Settings
