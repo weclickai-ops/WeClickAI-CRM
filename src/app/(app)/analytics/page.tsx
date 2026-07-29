@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { PageHeader } from "../PageHeader";
 import { AnalyticsFilters } from "./AnalyticsFilters";
-import { Donut, Bars, StatBar, HeatMap } from "./charts";
-import { money, initials, timeAgo, cx } from "@/lib/utils";
+import { Tabs, ActivityRail, type ActivityItem } from "./shell";
+import { Funnel, Donut, Spark, StatBar, AgeStrip, HeatMap, Trend, TONE } from "./charts";
+import { money, initials, cx } from "@/lib/utils";
 import type { Lead, Profile } from "@/lib/types";
 import {
-  Users, PhoneCall, PhoneOff, BadgeCheck, Trophy, XCircle,
-  IndianRupee, Percent, CalendarClock, Repeat, Clock, Download,
+  Users, PhoneCall, Trophy, IndianRupee, ArrowRight, PhoneOff,
+  BadgeCheck, XCircle, Clock, CalendarClock, Repeat, Target,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -18,25 +18,30 @@ function ymd(d: Date) {
 function pct(part: number, whole: number) {
   return whole ? Math.round((part / whole) * 100) : 0;
 }
+/** Percentage change against the previous window. null = nothing to compare. */
+function delta(now: number, before: number) {
+  if (!before) return now > 0 ? null : 0;
+  return Math.round(((now - before) / before) * 100);
+}
 
-/** Resolve the date-range filter into a concrete [from, to] window. */
+/** Current window plus the equivalent window immediately before it. */
 function resolveRange(range: string) {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
+  const t = new Date();
+  t.setHours(0, 0, 0, 0);
+
   if (range === "month") {
-    return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: null as Date | null, label: "This month" };
+    const from = new Date(t.getFullYear(), t.getMonth(), 1);
+    return { from, to: null as Date | null, prevFrom: new Date(t.getFullYear(), t.getMonth() - 1, 1), prevTo: from, label: "This month" };
   }
   if (range === "last_month") {
-    return {
-      from: new Date(now.getFullYear(), now.getMonth() - 1, 1),
-      to: new Date(now.getFullYear(), now.getMonth(), 1),
-      label: "Last month",
-    };
+    const from = new Date(t.getFullYear(), t.getMonth() - 1, 1);
+    const to = new Date(t.getFullYear(), t.getMonth(), 1);
+    return { from, to, prevFrom: new Date(t.getFullYear(), t.getMonth() - 2, 1), prevTo: from, label: "Last month" };
   }
   const days = Number(range) || 30;
-  const from = new Date(now);
-  from.setDate(from.getDate() - (days - 1));
-  return { from, to: null as Date | null, label: `Last ${days} days` };
+  const from = new Date(t); from.setDate(from.getDate() - (days - 1));
+  const prevFrom = new Date(from); prevFrom.setDate(prevFrom.getDate() - days);
+  return { from, to: null as Date | null, prevFrom, prevTo: from, label: `Last ${days} days` };
 }
 
 type Call = { id: string; lead_id: string; agent_id: string | null; outcome: string | null; created_at: string };
@@ -44,19 +49,11 @@ type Payment = { id: string; invoice_id: string; amount: number; paid_on: string
 type Inv = { id: string; lead_id: string | null; total: number; amount_paid: number; status: string };
 
 const STATUS_COLOURS: Record<string, string> = {
-  new: "#8A8F98",
-  contacted: "#B87333",
-  qualified: "#D98A4B",
-  won: "#3E7C59",
-  lost: "#9B4A3B",
+  new: TONE.muted, contacted: TONE.leads, qualified: "#F59E0B", won: TONE.won, lost: TONE.lost,
 };
-
-const OUTCOME_LABELS: Record<string, string> = {
-  connected: "Connected",
-  no_answer: "No answer",
-  busy: "Busy",
-  voicemail: "Voicemail",
-  wrong_number: "Wrong number",
+const OUTCOMES: Record<string, string> = {
+  connected: "Connected", no_answer: "No answer", busy: "Busy",
+  voicemail: "Voicemail", wrong_number: "Wrong number",
 };
 
 export default async function AnalyticsPage({
@@ -66,465 +63,484 @@ export default async function AnalyticsPage({
 }) {
   const sp = await searchParams;
   const range = sp.range ?? "30";
-  const { from, to, label: rangeLabel } = resolveRange(range);
+  const { from, to, prevFrom, prevTo, label: rangeLabel } = resolveRange(range);
   const supabase = await createClient();
 
-  const fromIso = from.toISOString();
-  const fromDay = ymd(from);
-
+  // Pull both windows in one go, then split — one round trip, real comparisons.
   const [{ data: profiles }, { data: campaignRows }, { data: leadRows }, { data: callRows }, { data: payRows }, { data: invRows }] =
     await Promise.all([
       supabase.from("profiles").select("*").eq("active", true),
       supabase.from("campaigns").select("id, name").order("name"),
-      supabase.from("leads").select("*").eq("archived", false).gte("created_at", fromIso),
-      supabase.from("calls").select("id, lead_id, agent_id, outcome, created_at").gte("created_at", fromIso),
-      supabase.from("invoice_payments").select("id, invoice_id, amount, paid_on").gte("paid_on", fromDay),
+      supabase.from("leads").select("*").eq("archived", false).gte("created_at", prevFrom.toISOString()),
+      supabase.from("calls").select("id, lead_id, agent_id, outcome, created_at").gte("created_at", prevFrom.toISOString()),
+      supabase.from("invoice_payments").select("id, invoice_id, amount, paid_on").gte("paid_on", ymd(prevFrom)),
       supabase.from("invoices").select("id, lead_id, total, amount_paid, status"),
     ]);
 
   const team = (profiles ?? []) as Profile[];
   const campaigns = (campaignRows ?? []) as { id: string; name: string }[];
   const invoices = (invRows ?? []) as Inv[];
+  const invById = new Map(invoices.map((i) => [i.id, i]));
 
-  // --- apply filters -------------------------------------------------------
-  let leads = (leadRows ?? []) as Lead[];
-  if (to) leads = leads.filter((l) => new Date(l.created_at) < to);
-  if (sp.rep) leads = leads.filter((l) => l.assigned_to === sp.rep);
-  if (sp.status) leads = leads.filter((l) => l.status === sp.status);
-  if (sp.source) leads = leads.filter((l) => l.source === sp.source);
-  if (sp.campaign) leads = leads.filter((l) => l.campaign_id === sp.campaign);
+  const inWindow = (iso: string, a: Date, b: Date | null) => {
+    const d = new Date(iso);
+    return d >= a && (!b || d < b);
+  };
+
+  // --- filters -------------------------------------------------------------
+  const applyLeadFilters = (rows: Lead[]) => {
+    let out = rows;
+    if (sp.rep) out = out.filter((l) => l.assigned_to === sp.rep);
+    if (sp.status) out = out.filter((l) => l.status === sp.status);
+    if (sp.source) out = out.filter((l) => l.source === sp.source);
+    if (sp.campaign) out = out.filter((l) => l.campaign_id === sp.campaign);
+    return out;
+  };
+
+  const allLeadRows = (leadRows ?? []) as Lead[];
+  const leads = applyLeadFilters(allLeadRows.filter((l) => inWindow(l.created_at, from, to)));
+  const prevLeads = applyLeadFilters(allLeadRows.filter((l) => inWindow(l.created_at, prevFrom, prevTo)));
 
   const leadIds = new Set(leads.map((l) => l.id));
-
-  let calls = (callRows ?? []) as Call[];
-  if (to) calls = calls.filter((c) => new Date(c.created_at) < to);
-  if (sp.rep) calls = calls.filter((c) => c.agent_id === sp.rep);
-  // when any lead filter is on, only count calls against those leads
   const leadFiltered = Boolean(sp.status || sp.source || sp.campaign);
-  if (leadFiltered) calls = calls.filter((c) => leadIds.has(c.lead_id));
+  const leadOwner = new Map(allLeadRows.map((l) => [l.id, l.assigned_to]));
 
-  const invById = new Map(invoices.map((i) => [i.id, i]));
-  const leadOwner = new Map(leads.map((l) => [l.id, l.assigned_to]));
+  const applyCallFilters = (rows: Call[]) => {
+    let out = rows;
+    if (sp.rep) out = out.filter((c) => c.agent_id === sp.rep);
+    if (leadFiltered) out = out.filter((c) => leadIds.has(c.lead_id));
+    return out;
+  };
+  const allCallRows = (callRows ?? []) as Call[];
+  const calls = applyCallFilters(allCallRows.filter((c) => inWindow(c.created_at, from, to)));
+  const prevCalls = applyCallFilters(allCallRows.filter((c) => inWindow(c.created_at, prevFrom, prevTo)));
 
-  let payments = (payRows ?? []) as Payment[];
-  if (to) payments = payments.filter((p) => p.paid_on < ymd(to));
-  payments = payments.filter((p) => {
+  const payMatches = (p: Payment) => {
     const inv = invById.get(p.invoice_id);
-    if (!inv?.lead_id) return !sp.rep && !leadFiltered; // unlinked money only counts company-wide
+    if (!inv?.lead_id) return !sp.rep && !leadFiltered;
     if (leadFiltered && !leadIds.has(inv.lead_id)) return false;
     if (sp.rep && leadOwner.get(inv.lead_id) !== sp.rep) return false;
     return true;
-  });
+  };
+  const allPayRows = (payRows ?? []) as Payment[];
+  const payments = allPayRows.filter((p) => p.paid_on >= ymd(from) && (!to || p.paid_on < ymd(to))).filter(payMatches);
+  const prevPayments = allPayRows.filter((p) => p.paid_on >= ymd(prevFrom) && p.paid_on < ymd(prevTo)).filter(payMatches);
 
-  // --- derived sets --------------------------------------------------------
-  const calledLeadIds = new Set(calls.map((c) => c.lead_id));
-  const connectedLeadIds = new Set(calls.filter((c) => c.outcome === "connected").map((c) => c.lead_id));
+  // --- derived -------------------------------------------------------------
+  const calledIds = new Set(calls.map((c) => c.lead_id));
+  const connectedIds = new Set(calls.filter((c) => c.outcome === "connected").map((c) => c.lead_id));
+  const prevCalledIds = new Set(prevCalls.map((c) => c.lead_id));
 
   const byStatus = (s: string) => leads.filter((l) => l.status === s).length;
   const won = byStatus("won");
+  const prevWon = prevLeads.filter((l) => l.status === "won").length;
   const lost = byStatus("lost");
   const qualified = leads.filter((l) => l.status === "qualified" || l.status === "won").length;
   const open = leads.filter((l) => l.status !== "won" && l.status !== "lost").length;
-  const called = leads.filter((l) => calledLeadIds.has(l.id)).length;
-  const connected = leads.filter((l) => connectedLeadIds.has(l.id)).length;
+  const called = leads.filter((l) => calledIds.has(l.id)).length;
+  const prevCalled = prevLeads.filter((l) => prevCalledIds.has(l.id)).length;
+  const connected = leads.filter((l) => connectedIds.has(l.id)).length;
+
+  const today = ymd(new Date());
   const followUps = leads.filter((l) => l.followups_enabled && l.next_followup_at).length;
-  const todayStr = ymd(new Date());
-  const overdueFollowUps = leads.filter(
-    (l) => l.followups_enabled && l.next_followup_at && l.next_followup_at < todayStr
-  ).length;
+  const overdue = leads.filter((l) => l.followups_enabled && l.next_followup_at && l.next_followup_at < today).length;
 
   const collected = payments.reduce((s, p) => s + Number(p.amount), 0);
-  const callsToday = calls.filter((c) => c.created_at.slice(0, 10) === todayStr).length;
+  const prevCollected = prevPayments.reduce((s, p) => s + Number(p.amount), 0);
   const avgDeal = won ? Math.round(collected / won) : 0;
-  const callsPerLead = leads.length ? (calls.length / leads.length).toFixed(1) : "0.0";
-
+  const callsToday = calls.filter((c) => c.created_at.slice(0, 10) === today).length;
   const outstanding = invoices
     .filter((i) => ["sent", "partially_paid"].includes(i.status))
     .filter((i) => !sp.rep || (i.lead_id && leadOwner.get(i.lead_id) === sp.rep))
-    .reduce((s, i) => s + (Number(i.total) - Number(i.amount_paid)), 0);
+    .reduce((s, i) => s + (Number(i.total) - Number(i.amount_paid ?? 0)), 0);
 
-  // --- KPI cards -----------------------------------------------------------
-  const kpis = [
-    { label: "Total leads", value: String(leads.length), sub: `${rangeLabel}`, icon: Users },
-    { label: "Called", value: String(called), sub: `${pct(called, leads.length)}% of leads`, icon: PhoneCall },
-    { label: "Not called", value: String(leads.length - called), sub: `${pct(leads.length - called, leads.length)}% untouched`, icon: PhoneOff, warn: leads.length - called > 0 },
-    { label: "Connected", value: String(connected), sub: `${pct(connected, called)}% of called`, icon: PhoneCall },
-    { label: "Qualified", value: String(qualified), sub: `${pct(qualified, leads.length)}% of leads`, icon: BadgeCheck },
-    { label: "Won", value: String(won), sub: `${pct(won, leads.length)}% conversion`, icon: Trophy, good: true },
-    { label: "Lost", value: String(lost), sub: `${pct(lost, leads.length)}% of leads`, icon: XCircle },
-    { label: "Open", value: String(open), sub: "still in play", icon: Clock },
-    { label: "Follow-ups", value: String(followUps), sub: overdueFollowUps ? `${overdueFollowUps} overdue` : "none overdue", icon: CalendarClock, warn: overdueFollowUps > 0 },
-    { label: "Collected", value: money(collected), sub: `${payments.length} payment${payments.length === 1 ? "" : "s"}`, icon: IndianRupee, good: collected > 0 },
-    { label: "Average deal", value: won ? money(avgDeal) : "—", sub: "collected ÷ won", icon: Percent },
-    { label: "Calls per lead", value: callsPerLead, sub: `${calls.length} calls, ${callsToday} today`, icon: Repeat },
-  ];
-
-  // --- funnel --------------------------------------------------------------
-  const funnel = [
-    { label: "Leads assigned", n: leads.length },
-    { label: "Calls attempted", n: called },
-    { label: "Connected", n: connected },
-    { label: "Qualified", n: qualified },
-    { label: "Follow-up scheduled", n: followUps },
-    { label: "Won", n: won },
-  ];
-
-  // --- daily series --------------------------------------------------------
-  const spanDays = Math.min(
-    60,
-    Math.max(7, Math.round((Date.now() - from.getTime()) / 86_400_000) + 1)
-  );
-  const days = Array.from({ length: spanDays }, (_, i) => {
-    const d = new Date(from);
-    d.setDate(d.getDate() + i);
-    return ymd(d);
+  // --- series --------------------------------------------------------------
+  const span = Math.min(60, Math.max(7, Math.round((Date.now() - from.getTime()) / 86_400_000) + 1));
+  const days = Array.from({ length: span }, (_, i) => {
+    const d = new Date(from); d.setDate(d.getDate() + i); return ymd(d);
   });
   const callSeries = days.map((d) => ({ label: d.slice(5), n: calls.filter((c) => c.created_at.slice(0, 10) === d).length }));
   const leadSeries = days.map((d) => ({ label: d.slice(5), n: leads.filter((l) => l.created_at.slice(0, 10) === d).length }));
-  const moneySeries = days.map((d) => ({
-    label: d.slice(5),
-    n: payments.filter((p) => p.paid_on === d).reduce((s, p) => s + Number(p.amount), 0),
-  }));
+  const moneySeries = days.map((d) => ({ label: d.slice(5), n: payments.filter((p) => p.paid_on === d).reduce((s, p) => s + Number(p.amount), 0) }));
 
-  // --- heat map (weekday × hour) -------------------------------------------
   const grid = Array.from({ length: 7 }, () => Array(24).fill(0) as number[]);
   for (const c of calls) {
     const d = new Date(c.created_at);
     grid[d.getDay()][d.getHours()] += 1;
   }
 
-  // --- lead ageing ---------------------------------------------------------
-  const ageBuckets = [
-    { label: "Under 1 day", max: 1 },
-    { label: "1–3 days", max: 3 },
-    { label: "3–7 days", max: 7 },
-    { label: "7–15 days", max: 15 },
-    { label: "15–30 days", max: 30 },
-    { label: "30+ days", max: Infinity },
-  ];
   const openLeads = leads.filter((l) => l.status !== "won" && l.status !== "lost");
-  const ageing = ageBuckets.map((b, i) => {
-    const lower = i === 0 ? 0 : ageBuckets[i - 1].max;
-    const n = openLeads.filter((l) => {
-      const age = (Date.now() - new Date(l.created_at).getTime()) / 86_400_000;
-      return age >= lower && age < b.max;
-    }).length;
-    return { label: b.label, n };
+  const AGE = [
+    { label: "Under 1 day", max: 1, color: "#16A34A" },
+    { label: "1–3 days", max: 3, color: "#65A30D" },
+    { label: "3–7 days", max: 7, color: "#CA8A04" },
+    { label: "7–15 days", max: 15, color: "#EA580C" },
+    { label: "15–30 days", max: 30, color: "#DC2626" },
+    { label: "30+ days", max: Infinity, color: "#991B1B" },
+  ];
+  const ageing = AGE.map((b, i) => {
+    const lower = i === 0 ? 0 : AGE[i - 1].max;
+    return {
+      label: b.label,
+      color: b.color,
+      n: openLeads.filter((l) => {
+        const age = (Date.now() - new Date(l.created_at).getTime()) / 86_400_000;
+        return age >= lower && age < b.max;
+      }).length,
+    };
   });
 
-  // --- operator table ------------------------------------------------------
+  // --- operators -----------------------------------------------------------
   const rows = team.map((p) => {
     const mine = leads.filter((l) => l.assigned_to === p.id);
     const mineIds = new Set(mine.map((l) => l.id));
-    const myCalls = calls.filter((c) => c.agent_id === p.id);
-    const myCalled = mine.filter((l) => calledLeadIds.has(l.id)).length;
-    const myConnected = mine.filter((l) => connectedLeadIds.has(l.id)).length;
     const myWon = mine.filter((l) => l.status === "won").length;
-    const myLost = mine.filter((l) => l.status === "lost").length;
-    const myMoney = payments
-      .filter((x) => {
-        const inv = invById.get(x.invoice_id);
-        return inv?.lead_id ? mineIds.has(inv.lead_id) : false;
-      })
-      .reduce((s, x) => s + Number(x.amount), 0);
-
     return {
       id: p.id,
       name: p.full_name ?? p.email,
       email: p.email,
       role: p.role,
       leads: mine.length,
-      calls: myCalls.length,
-      called: myCalled,
-      notCalled: mine.length - myCalled,
-      connected: myConnected,
+      calls: calls.filter((c) => c.agent_id === p.id).length,
+      called: mine.filter((l) => calledIds.has(l.id)).length,
+      connected: mine.filter((l) => connectedIds.has(l.id)).length,
       qualified: mine.filter((l) => l.status === "qualified" || l.status === "won").length,
-      followUps: mine.filter((l) => l.followups_enabled && l.next_followup_at).length,
       won: myWon,
-      lost: myLost,
+      lost: mine.filter((l) => l.status === "lost").length,
       open: mine.filter((l) => l.status !== "won" && l.status !== "lost").length,
-      money: myMoney,
+      money: payments
+        .filter((x) => { const inv = invById.get(x.invoice_id); return inv?.lead_id ? mineIds.has(inv.lead_id) : false; })
+        .reduce((s, x) => s + Number(x.amount), 0),
       close: pct(myWon, mine.length),
     };
   }).sort((a, b) => b.money - a.money || b.won - a.won);
+  const topRevenue = Math.max(1, ...rows.map((r) => r.money));
 
-  const bestClose = Math.max(0, ...rows.map((r) => r.close));
-
-  // --- activity timeline ---------------------------------------------------
+  // --- activity ------------------------------------------------------------
   const nameOf = new Map(team.map((t) => [t.id, t.full_name ?? t.email]));
   const leadName = new Map(leads.map((l) => [l.id, l.business_name]));
-  const timeline = [
+  const activity: ActivityItem[] = [
     ...calls.map((c) => ({
-      at: c.created_at,
+      sort: c.created_at,
+      at: new Date(c.created_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }),
       who: nameOf.get(c.agent_id ?? "") ?? "Someone",
       what: `called ${leadName.get(c.lead_id) ?? "a lead"}`,
-      tag: OUTCOME_LABELS[c.outcome ?? ""] ?? c.outcome ?? "",
-      tone: c.outcome === "connected" ? "text-emerald-700" : "text-muted",
+      tag: OUTCOMES[c.outcome ?? ""] ?? "",
+      good: c.outcome === "connected",
     })),
     ...payments.map((p) => ({
-      at: `${p.paid_on}T12:00:00`,
+      sort: `${p.paid_on}T12:00:00`,
+      at: new Date(p.paid_on).toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
       who: "Payment",
       what: `received ${money(Number(p.amount))}`,
       tag: "",
-      tone: "text-emerald-700",
+      good: true,
     })),
-  ]
-    .sort((a, b) => (a.at < b.at ? 1 : -1))
-    .slice(0, 14);
+  ].sort((a, b) => (a.sort < b.sort ? 1 : -1)).slice(0, 25)
+    .map(({ sort, ...rest }) => rest);
 
-  const operatorOptions = team.map((t) => ({ value: t.id, label: t.full_name ?? t.email }));
-  const campaignOptions = campaigns.map((c) => ({ value: c.id, label: c.name }));
   const selectedName = sp.rep ? nameOf.get(sp.rep) ?? null : null;
+  const qs = new URLSearchParams(sp as Record<string, string>);
+
+  const heroes = [
+    { label: "Total leads", value: String(leads.length), trend: delta(leads.length, prevLeads.length), icon: Users, tone: TONE.leads, foot: `${open} still open` },
+    { label: "Called", value: String(called), trend: delta(called, prevCalled), icon: PhoneCall, tone: TONE.calls, foot: `${pct(called, leads.length)}% of leads` },
+    { label: "Won", value: String(won), trend: delta(won, prevWon), icon: Trophy, tone: TONE.won, foot: `${pct(won, leads.length)}% conversion` },
+    { label: "Collected", value: money(collected), trend: delta(collected, prevCollected), icon: IndianRupee, tone: TONE.won, foot: `${money(outstanding)} outstanding` },
+  ];
+
+  const minis = [
+    { label: "Not called", value: leads.length - called, icon: PhoneOff, warn: leads.length - called > 0 },
+    { label: "Connected", value: connected, icon: PhoneCall },
+    { label: "Qualified", value: qualified, icon: BadgeCheck },
+    { label: "Lost", value: lost, icon: XCircle },
+    { label: "Open", value: open, icon: Clock },
+    { label: "Follow-ups", value: followUps, icon: CalendarClock, warn: overdue > 0 },
+    { label: "Avg deal", value: won ? money(avgDeal) : "—", icon: Target },
+    { label: "Calls / lead", value: leads.length ? (calls.length / leads.length).toFixed(1) : "0.0", icon: Repeat },
+  ];
 
   return (
     <>
-      <PageHeader
-        title="Analytics"
-        subtitle={`${selectedName ?? "All operators"} · ${rangeLabel}`}
-        action={
-          <Link href="/api/leads/export" className="btn-outline">
-            <Download className="h-4 w-4" /> Export CSV
-          </Link>
-        }
-      />
+      <div className="flex items-baseline justify-between gap-4">
+        <div>
+          <h1 className="font-display text-[32px] font-semibold leading-tight tracking-tight">Analytics</h1>
+          <p className="mt-0.5 text-[13px] text-muted">
+            {selectedName ?? "All operators"} · {rangeLabel}
+          </p>
+        </div>
+      </div>
 
       <AnalyticsFilters
-        operators={operatorOptions}
-        campaigns={campaignOptions}
-        active={{
-          range,
-          rep: sp.rep ?? "",
-          status: sp.status ?? "",
-          source: sp.source ?? "",
-          campaign: sp.campaign ?? "",
-        }}
+        operators={team.map((t) => ({ value: t.id, label: t.full_name ?? t.email }))}
+        campaigns={campaigns.map((c) => ({ value: c.id, label: c.name }))}
+        active={{ range, rep: sp.rep ?? "", status: sp.status ?? "", source: sp.source ?? "", campaign: sp.campaign ?? "" }}
       />
 
-      {/* KPI grid */}
-      <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {kpis.map((k) => (
-          <div key={k.label} className="card p-4 transition-shadow hover:shadow-md">
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-muted">{k.label}</p>
-              <k.icon
-                className={cx(
-                  "h-4 w-4",
-                  k.good ? "text-emerald-600" : k.warn ? "text-amber-600" : "text-muted"
-                )}
+      <div className="flex gap-5">
+        <div className="min-w-0 flex-1 space-y-4">
+          {/* level 1 — heroes */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {heroes.map((k) => (
+              <div
+                key={k.label}
+                className="card overflow-hidden p-4 transition-all duration-200 hover:-translate-y-px hover:shadow-md"
+              >
+                <div className="h-[3px] -mx-4 -mt-4 mb-3" style={{ background: k.tone }} />
+                <div className="flex items-start justify-between">
+                  <p className="text-[12px] font-medium uppercase tracking-wide text-muted">{k.label}</p>
+                  <k.icon className="h-4 w-4" style={{ color: k.tone }} />
+                </div>
+                <p className="mt-1.5 font-display text-[36px] font-semibold leading-none tabular-nums">{k.value}</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <Trend pct={k.trend} />
+                  <span className="truncate text-[11px] text-muted">{k.foot}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* level 1b — minis */}
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+            {minis.map((m) => (
+              <div key={m.label} className="card px-3 py-2.5 transition-colors hover:bg-black/[0.015]">
+                <div className="flex items-center gap-1.5">
+                  <m.icon className={cx("h-3 w-3", m.warn ? "text-amber-600" : "text-muted")} />
+                  <p className="truncate text-[11px] text-muted">{m.label}</p>
+                </div>
+                <p className={cx("mt-0.5 font-display text-[20px] font-semibold leading-none tabular-nums", m.warn && "text-amber-700")}>
+                  {m.value}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {/* level 2 — funnel + status */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="card p-5">
+              <p className="text-[14px] font-medium">Lead funnel</p>
+              <p className="mb-4 mt-0.5 text-[12px] text-muted">Hover a stage for drop-off.</p>
+              <Funnel
+                stages={[
+                  { label: "Assigned", n: leads.length },
+                  { label: "Called", n: called },
+                  { label: "Connected", n: connected },
+                  { label: "Qualified", n: qualified },
+                  { label: "Won", n: won },
+                ]}
               />
             </div>
-            <p className="mt-1.5 font-display text-2xl font-semibold tabular-nums">{k.value}</p>
-            <p className={cx("mt-0.5 text-xs", k.warn ? "text-amber-700" : "text-muted")}>{k.sub}</p>
-          </div>
-        ))}
-      </div>
 
-      {/* funnel + status donut */}
-      <div className="mb-5 grid gap-5 lg:grid-cols-2">
-        <div className="card p-5">
-          <p className="font-display text-base font-semibold">Lead funnel</p>
-          <p className="mt-1 text-sm text-muted">
-            Each stage as a share of leads in this window, with drop-off from the step above.
-          </p>
-          <div className="mt-4 space-y-3">
-            {funnel.map((f, i) => {
-              const prev = i === 0 ? f.n : funnel[i - 1].n;
-              const drop = prev - f.n;
-              return (
-                <div key={f.label}>
-                  <StatBar label={f.label} n={f.n} of={leads.length} />
-                  {i > 0 && drop > 0 && (
-                    <p className="mt-0.5 text-[11px] text-muted">
-                      −{drop} lost from previous step ({pct(drop, prev)}% drop-off)
-                    </p>
-                  )}
+            <div className="card p-5">
+              <p className="text-[14px] font-medium">Lead status</p>
+              <p className="mb-3 mt-0.5 text-[12px] text-muted">Click a status to filter.</p>
+              <Donut
+                total={leads.length}
+                slices={["new", "contacted", "qualified", "won", "lost"].map((s) => {
+                  const p = new URLSearchParams(qs); p.set("status", s);
+                  return {
+                    label: s === "contacted" ? "Called" : s[0].toUpperCase() + s.slice(1),
+                    n: byStatus(s),
+                    color: STATUS_COLOURS[s],
+                    href: `/analytics?${p.toString()}`,
+                  };
+                })}
+              />
+            </div>
+          </div>
+
+          {/* level 3 — charts, tabbed */}
+          <div className="card p-5">
+            <Tabs tabs={["Leads", "Calls", "Revenue", "Operators", "Performance"]} fixedHeight={300}>
+              {/* Leads */}
+              <div className="grid gap-5 lg:grid-cols-3">
+                <div className="lg:col-span-2">
+                  <p className="mb-2 text-[12px] text-muted">New leads per day</p>
+                  <Spark data={leadSeries} color={TONE.leads} />
                 </div>
-              );
-            })}
-          </div>
-        </div>
+                <div>
+                  <p className="mb-2 text-[12px] text-muted">{openLeads.length} open leads by age</p>
+                  <AgeStrip buckets={ageing} />
+                </div>
+              </div>
 
-        <div className="card p-5">
-          <p className="font-display text-base font-semibold">Leads by status</p>
-          <p className="mt-1 mb-4 text-sm text-muted">Click a status in the filter bar to drill in.</p>
-          <Donut
-            total={leads.length}
-            centreLabel={`${leads.length} leads`}
-            slices={["new", "contacted", "qualified", "won", "lost"].map((s) => ({
-              label: s === "contacted" ? "Called" : s[0].toUpperCase() + s.slice(1),
-              n: byStatus(s),
-              color: STATUS_COLOURS[s],
-            }))}
-          />
-        </div>
-      </div>
+              {/* Calls */}
+              <Tabs tabs={["Timeline", "Outcomes", "Heatmap"]}>
+                <div>
+                  <p className="mb-2 text-[12px] text-muted">{calls.length} calls · {callsToday} today</p>
+                  <Spark data={callSeries} color={TONE.calls} />
+                </div>
+                <div className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
+                  {Object.entries(OUTCOMES).map(([k, l]) => (
+                    <StatBar
+                      key={k}
+                      label={l}
+                      n={calls.filter((c) => c.outcome === k).length}
+                      of={calls.length}
+                      color={k === "connected" ? TONE.won : TONE.calls}
+                    />
+                  ))}
+                </div>
+                <div>
+                  <p className="mb-2 text-[12px] text-muted">When calls actually happen</p>
+                  <HeatMap grid={grid} />
+                </div>
+              </Tabs>
 
-      {/* call analytics */}
-      <div className="mb-5 grid gap-5 lg:grid-cols-3">
-        <div className="card p-5">
-          <p className="font-display text-base font-semibold">Call outcomes</p>
-          <p className="mt-1 text-sm text-muted">{calls.length} calls logged</p>
-          <div className="mt-4 space-y-3">
-            {Object.entries(OUTCOME_LABELS).map(([k, l]) => (
-              <StatBar
-                key={k}
-                label={l}
-                n={calls.filter((c) => c.outcome === k).length}
-                of={calls.length}
-                tone={k === "connected" ? "bg-emerald-600" : "bg-copper"}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div className="card p-5 lg:col-span-2">
-          <p className="font-display text-base font-semibold">Calls per day</p>
-          <p className="mt-1 text-sm text-muted">{rangeLabel} · {callsToday} today</p>
-          <Bars data={callSeries} />
-        </div>
-      </div>
-
-      <div className="mb-5 grid gap-5 lg:grid-cols-2">
-        <div className="card p-5">
-          <p className="font-display text-base font-semibold">New leads per day</p>
-          <Bars data={leadSeries} />
-        </div>
-        <div className="card p-5">
-          <p className="font-display text-base font-semibold">Collections per day</p>
-          <p className="mt-1 text-sm text-muted">
-            {money(collected)} in · {money(outstanding)} still outstanding
-          </p>
-          <Bars data={moneySeries} format={(n) => money(n)} />
-        </div>
-      </div>
-
-      {/* heat map + ageing */}
-      <div className="mb-5 grid gap-5 lg:grid-cols-2">
-        <div className="card p-5">
-          <p className="font-display text-base font-semibold">When calls actually happen</p>
-          <p className="mt-1 text-sm text-muted">Weekday against hour of day.</p>
-          <HeatMap grid={grid} />
-        </div>
-        <div className="card p-5">
-          <p className="font-display text-base font-semibold">Lead ageing</p>
-          <p className="mt-1 text-sm text-muted">
-            {openLeads.length} open leads by how long they&rsquo;ve been sitting.
-          </p>
-          <div className="mt-4 space-y-3">
-            {ageing.map((a, i) => (
-              <StatBar
-                key={a.label}
-                label={a.label}
-                n={a.n}
-                of={openLeads.length}
-                tone={i >= 4 ? "bg-red-500" : i >= 3 ? "bg-amber-500" : "bg-copper"}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* operator table */}
-      <div className="card mb-5 overflow-hidden">
-        <div className="border-b border-line px-5 py-4">
-          <p className="font-display text-base font-semibold">Operator performance</p>
-          <p className="mt-0.5 text-sm text-muted">Click a name to filter everything above to them.</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px]">
-            <thead>
-              <tr className="border-b border-line">
-                <th className="th">Operator</th>
-                <th className="th text-right">Leads</th>
-                <th className="th text-right">Called</th>
-                <th className="th text-right">Not called</th>
-                <th className="th text-right">Connected</th>
-                <th className="th text-right">Qualified</th>
-                <th className="th text-right">Follow-ups</th>
-                <th className="th text-right">Won</th>
-                <th className="th text-right">Lost</th>
-                <th className="th text-right">Open</th>
-                <th className="th text-right">Collected</th>
-                <th className="th">Close rate</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr
-                  key={r.id}
-                  className={cx(
-                    "border-b border-line last:border-0 hover:bg-black/[0.015]",
-                    sp.rep === r.id && "bg-copper/[0.05]"
-                  )}
-                >
-                  <td className="td">
-                    <Link
-                      href={`/analytics?range=${range}&rep=${r.id}`}
-                      className="flex items-center gap-2.5"
-                    >
-                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-copper text-xs font-semibold text-white">
-                        {initials(r.name, r.email)}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block truncate font-medium hover:text-copper">{r.name}</span>
-                        <span className="block text-xs capitalize text-muted">{r.role}</span>
-                      </span>
-                    </Link>
-                  </td>
-                  <td className="td text-right tabular-nums">{r.leads}</td>
-                  <td className="td text-right tabular-nums">{r.called}</td>
-                  <td className={cx("td text-right tabular-nums", r.notCalled > 0 && "text-amber-700")}>
-                    {r.notCalled}
-                  </td>
-                  <td className="td text-right tabular-nums">{r.connected}</td>
-                  <td className="td text-right tabular-nums">{r.qualified}</td>
-                  <td className="td text-right tabular-nums">{r.followUps}</td>
-                  <td className="td text-right font-medium tabular-nums text-emerald-700">{r.won}</td>
-                  <td className="td text-right tabular-nums">{r.lost}</td>
-                  <td className="td text-right tabular-nums">{r.open}</td>
-                  <td className="td text-right font-medium tabular-nums">{money(r.money)}</td>
-                  <td className="td w-40">
-                    <div className="flex items-center gap-2">
-                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-black/[0.06]">
-                        <div
-                          className={cx(
-                            "h-full rounded-full",
-                            r.close === bestClose && r.close > 0 ? "bg-emerald-600" : "bg-copper"
-                          )}
-                          style={{ width: `${r.close}%` }}
-                        />
-                      </div>
-                      <span className="w-9 text-right text-xs tabular-nums">{r.close}%</span>
+              {/* Revenue */}
+              <div className="grid gap-5 lg:grid-cols-3">
+                <div className="space-y-2.5">
+                  {[
+                    { k: "Today", v: payments.filter((p) => p.paid_on === today).reduce((s, p) => s + Number(p.amount), 0) },
+                    { k: rangeLabel, v: collected },
+                    { k: "Average deal", v: avgDeal },
+                    { k: "Outstanding", v: outstanding },
+                  ].map((r) => (
+                    <div key={r.k} className="flex items-baseline justify-between border-b border-line pb-2 last:border-0">
+                      <span className="text-[12px] text-muted">{r.k}</span>
+                      <span className="font-display text-[18px] font-semibold tabular-nums">{money(r.v)}</span>
                     </div>
-                  </td>
-                </tr>
-              ))}
-              {rows.length === 0 && (
-                <tr><td className="td text-muted" colSpan={12}>No active team members yet.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+                  ))}
+                </div>
+                <div className="lg:col-span-2">
+                  <p className="mb-2 text-[12px] text-muted">Collections per day</p>
+                  <Spark data={moneySeries} color={TONE.won} format={(n) => money(n)} />
+                </div>
+              </div>
 
-      {/* activity */}
-      <div className="card p-5">
-        <p className="font-display text-base font-semibold">Recent activity</p>
-        {timeline.length === 0 ? (
-          <p className="mt-2 text-sm text-muted">Nothing logged in this window.</p>
-        ) : (
-          <ul className="mt-3 space-y-2.5">
-            {timeline.map((t, i) => (
-              <li key={i} className="flex items-baseline gap-3 text-sm">
-                <span className="w-20 shrink-0 text-xs tabular-nums text-muted">{timeAgo(t.at)}</span>
-                <span className="flex-1">
-                  <span className="font-medium">{t.who}</span> {t.what}
-                </span>
-                {t.tag && <span className={cx("text-xs", t.tone)}>{t.tag}</span>}
-              </li>
-            ))}
-          </ul>
-        )}
+              {/* Operators — full table */}
+              <div className="-mx-5 overflow-x-auto px-5">
+                <table className="w-full min-w-[820px]">
+                  <thead>
+                    <tr className="border-b border-line">
+                      <th className="th">Operator</th>
+                      <th className="th text-right">Leads</th>
+                      <th className="th text-right">Called</th>
+                      <th className="th text-right">Connected</th>
+                      <th className="th text-right">Qualified</th>
+                      <th className="th text-right">Won</th>
+                      <th className="th text-right">Lost</th>
+                      <th className="th text-right">Open</th>
+                      <th className="th text-right">Collected</th>
+                      <th className="th text-right">Close</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r) => (
+                      <tr key={r.id} className="border-b border-line last:border-0 hover:bg-black/[0.015]">
+                        <td className="td">
+                          <Link href={`/analytics?range=${range}&rep=${r.id}`} className="font-medium hover:text-copper">
+                            {r.name}
+                          </Link>
+                        </td>
+                        <td className="td text-right tabular-nums">{r.leads}</td>
+                        <td className="td text-right tabular-nums">{r.called}</td>
+                        <td className="td text-right tabular-nums">{r.connected}</td>
+                        <td className="td text-right tabular-nums">{r.qualified}</td>
+                        <td className="td text-right font-medium tabular-nums text-emerald-700">{r.won}</td>
+                        <td className="td text-right tabular-nums">{r.lost}</td>
+                        <td className="td text-right tabular-nums">{r.open}</td>
+                        <td className="td text-right font-medium tabular-nums">{money(r.money)}</td>
+                        <td className="td text-right tabular-nums">{r.close}%</td>
+                      </tr>
+                    ))}
+                    {rows.length === 0 && (
+                      <tr><td className="td text-muted" colSpan={10}>No active team members yet.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Performance */}
+              <div className="grid gap-6 lg:grid-cols-2">
+                <div>
+                  <p className="mb-3 text-[12px] text-muted">Close rate</p>
+                  <div className="space-y-3">
+                    {rows.map((r) => (
+                      <StatBar key={r.id} label={r.name} n={r.won} of={r.leads || 1} color={TONE.won} />
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <p className="mb-3 text-[12px] text-muted">Revenue share</p>
+                  <div className="space-y-3">
+                    {rows.map((r) => (
+                      <div key={r.id}>
+                        <div className="flex items-baseline justify-between text-[13px]">
+                          <span className="truncate">{r.name}</span>
+                          <span className="font-medium tabular-nums">{money(r.money)}</span>
+                        </div>
+                        <div className="mt-1 h-2 overflow-hidden rounded-full bg-black/[0.05]">
+                          <div className="h-full rounded-full" style={{ width: `${(r.money / topRevenue) * 100}%`, background: TONE.leads }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </Tabs>
+          </div>
+
+          {/* level 4 — top 5 */}
+          <div className="card overflow-hidden">
+            <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
+              <p className="text-[14px] font-medium">Top operators</p>
+              <span className="text-[12px] text-muted">by collections</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[620px]">
+                <tbody>
+                  {rows.slice(0, 5).map((r) => (
+                    <tr key={r.id} className="border-b border-line last:border-0 hover:bg-black/[0.015]">
+                      <td className="td">
+                        <div className="flex items-center gap-2.5">
+                          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-copper text-[11px] font-semibold text-white">
+                            {initials(r.name, r.email)}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block truncate text-[13px] font-medium">{r.name}</span>
+                            <span className="block text-[11px] capitalize text-muted">{r.role}</span>
+                          </span>
+                        </div>
+                      </td>
+                      <td className="td text-right">
+                        <span className="block text-[13px] font-medium tabular-nums">{r.leads}</span>
+                        <span className="block text-[11px] text-muted">leads</span>
+                      </td>
+                      <td className="td text-right">
+                        <span className="block text-[13px] font-medium tabular-nums text-emerald-700">{r.won}</span>
+                        <span className="block text-[11px] text-muted">won</span>
+                      </td>
+                      <td className="td text-right">
+                        <span className="block text-[13px] font-medium tabular-nums">{money(r.money)}</span>
+                        <span className="block text-[11px] text-muted">collected</span>
+                      </td>
+                      <td className="td w-32">
+                        <div className="flex items-center gap-2">
+                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-black/[0.06]">
+                            <div className="h-full rounded-full" style={{ width: `${r.close}%`, background: TONE.won }} />
+                          </div>
+                          <span className="w-8 text-right text-[11px] tabular-nums">{r.close}%</span>
+                        </div>
+                      </td>
+                      <td className="td w-10 text-right">
+                        <Link href={`/analytics?range=${range}&rep=${r.id}`} className="btn-ghost px-2 py-1.5" title="Drill in">
+                          <ArrowRight className="h-4 w-4 text-muted" />
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                  {rows.length === 0 && (
+                    <tr><td className="td text-muted">No active team members yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* level 5 */}
+        <ActivityRail items={activity} />
       </div>
     </>
   );
