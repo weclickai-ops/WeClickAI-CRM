@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import type { Lead, PipelineStage, CustomField, StageGroup } from "@/lib/types";
+import type { Lead, PipelineStage, CustomField } from "@/lib/types";
 import { timeAgo } from "@/lib/utils";
 import {
   Phone, ArrowLeft, Send, FileText, Globe, MapPin, Mail, User, Instagram,
