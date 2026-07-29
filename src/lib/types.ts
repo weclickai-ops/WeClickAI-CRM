@@ -2,6 +2,7 @@ export type Role = "admin" | "manager" | "agent";
 export type LeadStatus = "new" | "contacted" | "qualified" | "won" | "lost";
 export type CampaignStatus = "active" | "paused" | "draft";
 export type InvoiceStatus = "draft" | "sent" | "partially_paid" | "paid" | "void" | "written_off";
+export type StageGroup = "todo" | "in_progress" | "complete";
 
 export interface Profile {
   id: string; email: string; full_name: string | null;
