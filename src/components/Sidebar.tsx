@@ -9,7 +9,7 @@ import type { Profile } from "@/lib/types";
 import {
   LayoutDashboard, Users, KanbanSquare, Radar, FileText,
   Settings, LogOut, Sparkles, GitBranch, Wallet,
-  BadgeCheck, CalendarClock, ExternalLink, BarChart3,
+  BadgeCheck, CalendarClock, Landmark, ExternalLink, BarChart3,
 } from "lucide-react";
 
 /** The finance platform is a separate deployment on the same Supabase project. */
@@ -30,6 +30,7 @@ const NAV = [
 const SETTINGS = [
   { href: "/settings/team",          label: "Team & roles",  icon: Users, adminOnly: true },
   { href: "/settings/custom-fields", label: "Custom fields", icon: Sparkles },
+  { href: "/settings/bank-accounts",  label: "Bank accounts", icon: Landmark, adminOnly: true },
   { href: "/settings/workflows",     label: "Workflows",     icon: GitBranch },
 ];
 
