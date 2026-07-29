@@ -8,12 +8,28 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { Logo } from "@/components/Logo";
 import { money } from "@/lib/utils";
 import type { Invoice, InvoiceStatus } from "@/lib/types";
-import { ArrowLeft, Printer, Check, Send, Ban } from "lucide-react";
+import { ArrowLeft, Printer, Check, Send, Ban, Trash2, ExternalLink, Loader2 } from "lucide-react";
+
+const FINANCE_URL =
+  process.env.NEXT_PUBLIC_FINANCE_URL ?? "https://weclick-ai-finance.vercel.app";
 
 export function InvoiceDetailClient({ invoice: initial }: { invoice: Invoice }) {
   const supabase = createClient();
   const router = useRouter();
   const [inv, setInv] = useState<Invoice>(initial);
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  /** Hard delete. Payments cascade; use Void instead if the invoice was ever issued. */
+  async function remove() {
+    setDeleting(true);
+    setError(null);
+    const { error: err } = await supabase.from("invoices").delete().eq("id", inv.id);
+    if (err) { setDeleting(false); setError(err.message); return; }
+    router.push("/invoices");
+    router.refresh();
+  }
 
   async function setStatus(status: InvoiceStatus) {
     const patch: any = { status };
@@ -48,8 +64,33 @@ export function InvoiceDetailClient({ invoice: initial }: { invoice: Invoice }) 
               <Ban className="h-4 w-4" /> Void
             </button>
           )}
+          <a href={`${FINANCE_URL}/invoices/${inv.id}`} target="_blank" rel="noopener noreferrer"
+             className="btn-outline" title="Full invoice document, payments and email">
+            <ExternalLink className="h-4 w-4" /> Open in Finance
+          </a>
+          {confirming ? (
+            <span className="inline-flex items-center gap-2">
+              <button className="btn-danger" onClick={remove} disabled={deleting}>
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                Delete for good
+              </button>
+              <button className="btn-ghost text-muted" onClick={() => setConfirming(false)} disabled={deleting}>
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button className="btn-ghost text-muted" onClick={() => setConfirming(true)} title="Delete permanently">
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
+
+      {error && (
+        <p className="mx-auto mb-3 max-w-3xl rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 print:hidden">
+          {error}
+        </p>
+      )}
 
       <div className="card mx-auto max-w-3xl p-8 print:border-0 print:shadow-none">
         <div className="flex items-start justify-between">
@@ -98,6 +139,17 @@ export function InvoiceDetailClient({ invoice: initial }: { invoice: Invoice }) 
           <div className="flex justify-between border-t border-line pt-2 text-base font-semibold">
             <span>Total</span><span>{money(Number(inv.total), inv.currency)}</span>
           </div>
+          {Number(inv.amount_paid) > 0 && Number(inv.amount_paid) < Number(inv.total) && (
+            <>
+              <div className="flex justify-between text-emerald-700">
+                <span>Paid so far</span><span>{money(Number(inv.amount_paid), inv.currency)}</span>
+              </div>
+              <div className="flex justify-between font-medium">
+                <span>Balance due</span>
+                <span>{money(Number(inv.total) - Number(inv.amount_paid), inv.currency)}</span>
+              </div>
+            </>
+          )}
         </div>
 
         {inv.notes && <p className="mt-8 border-t border-line pt-4 text-sm text-muted">{inv.notes}</p>}
