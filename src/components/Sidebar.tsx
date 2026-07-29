@@ -8,15 +8,19 @@ import { cx, initials } from "@/lib/utils";
 import type { Profile } from "@/lib/types";
 import {
   LayoutDashboard, Users, KanbanSquare, Radar, FileText,
-  Settings, LogOut, Sparkles, GitBranch,
+  Settings, LogOut, Sparkles, GitBranch, Wallet,
+  BadgeCheck, CalendarClock,
 } from "lucide-react";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/leads",     label: "Leads",     icon: Users },
+  { href: "/qualified", label: "Qualified", icon: BadgeCheck },
+  { href: "/follow-ups",label: "Follow-ups",icon: CalendarClock },
   { href: "/pipeline",  label: "Pipeline",  icon: KanbanSquare },
   { href: "/campaigns", label: "Campaigns", icon: Radar },
   { href: "/invoices",  label: "Invoices",  icon: FileText },
+  { href: "/finance",   label: "Finance",   icon: Wallet },
 ];
 
 const SETTINGS = [
