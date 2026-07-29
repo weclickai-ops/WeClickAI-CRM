@@ -227,6 +227,11 @@ export default function NewInvoicePage() {
                   <p className="font-medium text-ink">{company.legal_name}</p>
                   {company.address && <p className="whitespace-pre-line">{company.address}</p>}
                   {company.phone && <p>{company.phone}</p>}
+                  {(Array.isArray(company.contacts) ? company.contacts : []).map((c) => (
+                    <p key={`${c.name}-${c.phone}`}>
+                      {c.name}{c.role ? ` (${c.role})` : ""}{c.name && c.phone ? " · " : ""}{c.phone}
+                    </p>
+                  ))}
                   {company.email && <p>{company.email}</p>}
                   {company.website && <p>{company.website}</p>}
                   {company.gstin && <p>GSTIN: {company.gstin}</p>}
