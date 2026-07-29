@@ -82,9 +82,23 @@ export interface CustomField {
   options: string[]; required: boolean; position: number;
 }
 
+export interface CompanySettings {
+  id: number;
+  legal_name: string; tagline: string | null; address: string | null;
+  gstin: string | null; pan: string | null; email: string | null;
+  phone: string | null; logo_url: string | null;
+  bank_name: string | null; account_name: string | null;
+  account_number: string | null; ifsc: string | null;
+  swift: string | null; upi: string | null;
+  invoice_prefix: string; next_number: number; number_padding: number;
+  default_terms: string | null; base_currency: string;
+}
+
 export interface Invoice {
   id: string; number: string; lead_id: string | null; client_name: string;
-  client_email: string | null; currency: string;
+  client_email: string | null; client_phone: string | null;
+  client_company: string | null; client_address: string | null;
+  issued_on: string | null; currency: string;
   line_items: { desc: string; qty: number; rate: number }[];
   subtotal: number; tax_percent: number; total: number;
   status: InvoiceStatus; amount_paid: number; due_date: string | null; notes: string | null;
