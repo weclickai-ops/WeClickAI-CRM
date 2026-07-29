@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { InvoiceDetailClient } from "./InvoiceDetailClient";
-import type { CompanySettings } from "@/lib/types";
+import type { CompanySettings, BankAccount } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -23,10 +23,17 @@ export default async function InvoiceDetailPage({
 
   if (!invoice) notFound();
 
+  // The account chosen when the invoice was raised. Older invoices have none,
+  // so the document falls back to the bank details on company_settings.
+  const { data: bank } = invoice.bank_account_id
+    ? await supabase.from("bank_accounts").select("*").eq("id", invoice.bank_account_id).maybeSingle()
+    : { data: null };
+
   return (
     <InvoiceDetailClient
       invoice={invoice}
       company={(company ?? null) as CompanySettings | null}
+      bank={(bank ?? null) as BankAccount | null}
       autoPrint={sp.print === "1"}
     />
   );
