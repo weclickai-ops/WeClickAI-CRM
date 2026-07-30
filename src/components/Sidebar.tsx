@@ -9,7 +9,7 @@ import type { Profile } from "@/lib/types";
 import {
   LayoutDashboard, Users, KanbanSquare, Radar, FileText,
   Settings, LogOut, Sparkles, GitBranch, Wallet,
-  BadgeCheck, CalendarClock, Landmark, Building2, ExternalLink, BarChart3,
+  BadgeCheck, CalendarClock, Landmark, Building2, Briefcase, ExternalLink, BarChart3,
 } from "lucide-react";
 
 /** The finance platform is a separate deployment on the same Supabase project. */
@@ -23,6 +23,7 @@ const NAV = [
   { href: "/follow-ups",label: "Follow-ups",icon: CalendarClock },
   { href: "/pipeline",  label: "Pipeline",  icon: KanbanSquare },
   { href: "/campaigns", label: "Campaigns", icon: Radar },
+  { href: "/clients",   label: "Clients",   icon: Briefcase },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/invoices",  label: "Invoices",  icon: FileText },
 ];
