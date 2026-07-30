@@ -126,3 +126,52 @@ export interface Workflow {
   actions: { type: string; params: Record<string, string> }[];
   active: boolean; created_at: string;
 }
+
+/* ------------------------------------------------------------------ *
+ * Client delivery
+ * ------------------------------------------------------------------ */
+
+export type ClientStatus  = "active" | "paused" | "completed" | "churned";
+export type ProjectStatus =
+  | "planning" | "development" | "waiting_client"
+  | "review" | "revision" | "delayed" | "completed";
+export type WorkPriority  = "low" | "medium" | "high" | "urgent";
+export type TaskStatus    = "todo" | "in_progress" | "review" | "done";
+
+export interface Client {
+  id: string; lead_id: string | null;
+  company_name: string; contact_name: string | null; designation: string | null;
+  email: string | null; phone: string | null; whatsapp: string | null;
+  website: string | null; address: string | null; city: string | null;
+  industry: string | null; logo_url: string | null; timezone: string;
+  source: string | null; client_since: string;
+  account_manager: string | null; status: ClientStatus;
+  notes_internal: string | null; notes_client: string | null;
+  created_at: string; updated_at: string;
+}
+
+export interface Project {
+  id: string; client_id: string; name: string; service: string;
+  status: ProjectStatus; priority: WorkPriority; progress: number;
+  start_date: string | null; delivery_date: string | null; completed_on: string | null;
+  owner: string | null; budget: number;
+  created_at: string; updated_at: string;
+}
+
+export interface ProjectMilestone {
+  id: string; project_id: string; name: string; done: boolean;
+  due_date: string | null; assigned_to: string | null;
+  position: number; done_at: string | null; notes: string | null;
+}
+
+export interface ProjectTask {
+  id: string; project_id: string; title: string;
+  status: TaskStatus; priority: WorkPriority;
+  assigned_to: string | null; due_date: string | null;
+  position: number; created_at: string;
+}
+
+export interface ClientActivity {
+  id: string; client_id: string; project_id: string | null;
+  kind: string; summary: string; actor: string | null; created_at: string;
+}
