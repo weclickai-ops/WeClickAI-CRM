@@ -328,9 +328,18 @@ export function InvoiceDetailClient({
         {bankLines.length > 0 && (
           <div className="mt-10 border-t border-line pt-6 text-[13px]">
             <p className="label">Payment details</p>
-            <div className="space-y-0.5 leading-relaxed text-muted">
-              {bankLines.map((b) => <p key={b}>{b}</p>)}
-              {company?.website && <p className="pt-1">{company.website}</p>}
+            <div className="flex items-start justify-between gap-6">
+              <div className="space-y-0.5 leading-relaxed text-muted">
+                {bankLines.map((b) => <p key={b}>{b}</p>)}
+                {company?.website && <p className="pt-1">{company.website}</p>}
+              </div>
+              {bank?.qr_url && (
+                <div className="shrink-0 text-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={bank.qr_url} alt="Scan to pay" className="h-24 w-24 object-contain" />
+                  <p className="mt-1 text-[11px] text-muted">Scan to pay</p>
+                </div>
+              )}
             </div>
           </div>
         )}
