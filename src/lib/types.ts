@@ -104,7 +104,8 @@ export interface BankAccount {
   id: string; label: string;
   bank_name: string; account_name: string; account_number: string;
   ifsc: string | null; swift: string | null; upi: string | null;
-  currency: string; is_default: boolean; active: boolean; created_at: string;
+  currency: string; qr_url: string | null;
+  is_default: boolean; active: boolean; created_at: string;
 }
 
 export interface Invoice {
