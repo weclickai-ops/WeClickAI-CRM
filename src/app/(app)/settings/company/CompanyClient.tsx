@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Logo } from "@/components/Logo";
 import type { CompanySettings, CompanyContact } from "@/lib/types";
 import { Plus, Trash2, Loader2, Check, Building2, Users, FileText, PenLine } from "lucide-react";
+import { ImageUpload } from "@/components/ui/ImageUpload";
 
 export function CompanyClient({ settings }: { settings: CompanySettings }) {
   const supabase = createClient();
@@ -190,23 +191,18 @@ export function CompanyClient({ settings }: { settings: CompanySettings }) {
             <p className="font-display text-base font-semibold">Signature</p>
           </div>
           <p className="mt-1 text-sm text-muted">
-            Paste a link to a PNG of your signature — ideally on a transparent
-            background. It prints above the signature line. Leave it empty and
+            Prints above the signature line on every invoice. Leave it empty and
             the line stays blank for signing by hand.
           </p>
-          <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_12rem]">
-            <Field label="Signature image URL" k="signature_url" placeholder="https://…/signature.png" />
-            <div>
-              <p className="label">Preview</p>
-              <div className="grid h-[62px] place-items-center rounded-lg border border-dashed border-line">
-                {f.signature_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={f.signature_url} alt="Signature" className="max-h-[54px] object-contain" />
-                ) : (
-                  <span className="text-xs text-muted">nothing yet</span>
-                )}
-              </div>
-            </div>
+          <div className="mt-4">
+            <ImageUpload
+              label="Signature image"
+              value={f.signature_url || null}
+              onChange={(url) => upd({ signature_url: url ?? "" })}
+              folder="signatures"
+              boxClass="h-20"
+              hint="Sign a white sheet, photograph it, crop tight. A PNG with a transparent background looks best."
+            />
           </div>
         </div>
       </div>
