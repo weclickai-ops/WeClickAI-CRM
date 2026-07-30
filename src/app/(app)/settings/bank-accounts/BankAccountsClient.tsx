@@ -6,12 +6,13 @@ import { createClient } from "@/lib/supabase/client";
 import type { BankAccount } from "@/lib/types";
 import { cx } from "@/lib/utils";
 import { Plus, Trash2, Loader2, Check, Star, Landmark, X } from "lucide-react";
+import { ImageUpload } from "@/components/ui/ImageUpload";
 
 const CURRENCIES = ["INR", "USD", "EUR", "GBP", "AED", "SGD"];
 
 const BLANK = {
   label: "", bank_name: "", account_name: "", account_number: "",
-  ifsc: "", swift: "", upi: "", currency: "INR",
+  ifsc: "", swift: "", upi: "", currency: "INR", qr_url: null as string | null,
 };
 
 export function BankAccountsClient({ accounts: initial }: { accounts: BankAccount[] }) {
@@ -90,13 +91,19 @@ export function BankAccountsClient({ accounts: initial }: { accounts: BankAccoun
                   <span className="chip bg-black/5 text-muted">{a.currency}</span>
                   {!a.active && <span className="chip bg-black/5 text-muted">hidden</span>}
                 </div>
-                <div className="mt-2 space-y-0.5 text-[13px] leading-relaxed text-muted">
+                <div className="mt-2 flex items-start gap-4">
+                  {a.qr_url && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={a.qr_url} alt="UPI QR" className="h-20 w-20 shrink-0 rounded border border-line object-contain p-1" />
+                  )}
+                <div className="space-y-0.5 text-[13px] leading-relaxed text-muted">
                   {a.bank_name && <p>{a.bank_name}</p>}
                   {a.account_name && <p>Account name: {a.account_name}</p>}
                   <p>Account no: {a.account_number}</p>
                   {a.ifsc && <p>IFSC: {a.ifsc}</p>}
                   {a.swift && <p>SWIFT: {a.swift}</p>}
                   {a.upi && <p>UPI: {a.upi}</p>}
+                </div>
                 </div>
               </div>
 
@@ -197,6 +204,15 @@ export function BankAccountsClient({ accounts: initial }: { accounts: BankAccoun
                       onChange={(e) => setForm({ ...form, currency: e.target.value })}>
                 {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
+            </div>
+            <div className="sm:col-span-2">
+              <ImageUpload
+                label="UPI QR code"
+                value={form.qr_url}
+                onChange={(url) => setForm({ ...form, qr_url: url })}
+                folder="qr"
+                hint="Screenshot the QR from your UPI app and crop it tight. Prints beside the bank details so clients can scan and pay."
+              />
             </div>
           </div>
 
