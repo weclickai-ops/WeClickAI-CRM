@@ -22,6 +22,35 @@ type LeadHit = {
   source: string; assigned_to: string | null;
 };
 
+/**
+ * Defined at module scope on purpose. When a component is declared inside
+ * another component's body, React sees a new component type on every render,
+ * unmounts the old input and mounts a fresh one — which throws away focus
+ * after each keystroke.
+ */
+function Field({
+  label, value, onChange, placeholder, type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: string;
+}) {
+  return (
+    <div>
+      <label className="label">{label}</label>
+      <input
+        className="input"
+        type={type}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </div>
+  );
+}
+
 function ymd(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -167,18 +196,6 @@ export default function NewClientPage() {
     }
   }
 
-  const F = ({
-    label, k, placeholder, type = "text",
-  }: { label: string; k: keyof typeof c; placeholder?: string; type?: string }) => (
-    <div>
-      <label className="label">{label}</label>
-      <input
-        className="input" type={type} placeholder={placeholder}
-        value={c[k] as string}
-        onChange={(e) => setC({ ...c, [k]: e.target.value })}
-      />
-    </div>
-  );
 
   return (
     <>
@@ -240,14 +257,14 @@ export default function NewClientPage() {
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <div className="sm:col-span-2">
-                <F label="Company name *" k="company_name" placeholder="Rakshita Hospital" />
+                <Field label="Company name *" placeholder="Rakshita Hospital"  value={c.company_name} onChange={(v) => setC({ ...c, company_name: v })} />
               </div>
-              <F label="Contact name" k="contact_name" />
-              <F label="Designation" k="designation" placeholder="Director" />
-              <F label="Email" k="email" type="email" />
-              <F label="Phone" k="phone" />
-              <F label="WhatsApp" k="whatsapp" />
-              <F label="Website" k="website" placeholder="example.com" />
+              <Field label="Contact name"  value={c.contact_name} onChange={(v) => setC({ ...c, contact_name: v })} />
+              <Field label="Designation" placeholder="Director"  value={c.designation} onChange={(v) => setC({ ...c, designation: v })} />
+              <Field label="Email" type="email"  value={c.email} onChange={(v) => setC({ ...c, email: v })} />
+              <Field label="Phone"  value={c.phone} onChange={(v) => setC({ ...c, phone: v })} />
+              <Field label="WhatsApp"  value={c.whatsapp} onChange={(v) => setC({ ...c, whatsapp: v })} />
+              <Field label="Website" placeholder="example.com"  value={c.website} onChange={(v) => setC({ ...c, website: v })} />
               <div>
                 <label className="label">Industry</label>
                 <select className="input" value={c.industry} onChange={(e) => setC({ ...c, industry: e.target.value })}>
@@ -255,9 +272,9 @@ export default function NewClientPage() {
                   {INDUSTRIES.map((i) => <option key={i} value={i}>{i}</option>)}
                 </select>
               </div>
-              <F label="City" k="city" />
+              <Field label="City"  value={c.city} onChange={(v) => setC({ ...c, city: v })} />
               <div className="sm:col-span-2">
-                <F label="Address" k="address" />
+                <Field label="Address"  value={c.address} onChange={(v) => setC({ ...c, address: v })} />
               </div>
               <div className="sm:col-span-2">
                 <ImageUpload
