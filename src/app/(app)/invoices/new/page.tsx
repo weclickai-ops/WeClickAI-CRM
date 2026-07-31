@@ -26,8 +26,10 @@ export default function NewInvoicePage() {
   const params = useSearchParams();
   const supabase = createClient();
   const leadParam = params.get("lead");
+  const clientParam = params.get("client");
 
   const [leadId, setLeadId] = useState<string | null>(leadParam);
+  const [clientId, setClientId] = useState<string | null>(clientParam);
   const [clientName, setClientName] = useState("");
   const [clientEmail, setClientEmail] = useState("");
   const [clientPhone, setClientPhone] = useState("");
@@ -81,6 +83,26 @@ export default function NewInvoicePage() {
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Arriving from a client workspace — fill from the client record.
+  useEffect(() => {
+    if (!clientParam) return;
+    supabase
+      .from("clients")
+      .select("id, company_name, contact_name, email, phone, address, lead_id")
+      .eq("id", clientParam)
+      .single()
+      .then(({ data }) => {
+        if (!data) return;
+        setClientName(data.contact_name || data.company_name);
+        setClientCompany(data.contact_name ? data.company_name : "");
+        setClientEmail(data.email ?? "");
+        setClientPhone(data.phone ?? "");
+        setClientAddress(data.address ?? "");
+        if (data.lead_id) setLeadId(data.lead_id);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clientParam]);
 
   // Arriving from a lead page — fill straight away.
   useEffect(() => {
@@ -163,6 +185,7 @@ export default function NewInvoicePage() {
       const { data, error: err } = await supabase.from("invoices").insert({
         number,
         lead_id: leadId,
+        client_id: clientId,
         client_name: clientName.trim(),
         client_email: clientEmail.trim() || null,
         client_phone: clientPhone.trim() || null,
