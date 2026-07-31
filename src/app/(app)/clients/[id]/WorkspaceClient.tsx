@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PROJECT_STATUS, PRIORITY, SERVICES, daysUntil, projectHealth, HEALTH } from "@/lib/delivery";
 import { money, cx } from "@/lib/utils";
 import type { Project, Profile, ProjectStatus, WorkPriority } from "@/lib/types";
-import { Plus, Loader2, Check, X, Trash2, Save } from "lucide-react";
+import { Plus, Loader2, Check, X, Trash2, Save, Link2, Unlink } from "lucide-react";
 
 function ymd(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -367,5 +367,102 @@ export function NotesAndLog({
         <p className="mt-1.5 text-[11px] text-muted">Appears in the activity feed and on the clients list.</p>
       </div>
     </div>
+  );
+}
+
+
+/**
+ * Attach an existing invoice to this client.
+ *
+ * Invoices raised before this module existed carry a lead_id but no client_id,
+ * so they don't roll up here. Rather than re-creating them, point them at the
+ * client — the invoice itself is untouched, and Analytics keeps crediting the
+ * rep on the linked lead exactly as before.
+ */
+export function LinkInvoice({
+  clientId,
+  unlinked,
+}: {
+  clientId: string;
+  unlinked: { id: string; number: string; client_name: string; total: number; currency: string }[];
+}) {
+  const supabase = createClient();
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  async function link(id: string) {
+    setBusy(id);
+    await supabase.from("invoices").update({ client_id: clientId }).eq("id", id);
+    setBusy(null);
+    setOpen(false);
+    router.refresh();
+  }
+
+  if (unlinked.length === 0) return null;
+
+  if (!open) {
+    return (
+      <button className="btn-ghost mt-3 w-full justify-center px-2 py-1.5 text-[12px] text-muted hover:text-copper"
+              onClick={() => setOpen(true)}>
+        <Link2 className="h-3.5 w-3.5" /> Link an existing invoice ({unlinked.length})
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-line p-2">
+      <div className="flex items-center justify-between px-1 pb-1.5">
+        <p className="text-[12px] font-medium">Not linked to any client</p>
+        <button className="text-muted hover:text-ink" onClick={() => setOpen(false)}>
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <ul className="max-h-56 space-y-0.5 overflow-y-auto">
+        {unlinked.map((i) => (
+          <li key={i.id}>
+            <button
+              onClick={() => link(i.id)}
+              disabled={busy !== null}
+              className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left text-[12px] hover:bg-black/[0.03]"
+            >
+              <span className="min-w-0">
+                <span className="block truncate font-medium">{i.number}</span>
+                <span className="block truncate text-[11px] text-muted">{i.client_name}</span>
+              </span>
+              <span className="flex shrink-0 items-center gap-1.5 tabular-nums">
+                {money(Number(i.total), i.currency)}
+                {busy === i.id
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Plus className="h-3.5 w-3.5 text-muted" />}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Detach an invoice from this client without deleting it. */
+export function UnlinkInvoice({ invoiceId }: { invoiceId: string }) {
+  const supabase = createClient();
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <button
+      title="Unlink from this client"
+      className="shrink-0 text-muted opacity-0 transition-opacity hover:text-red-600 group-hover:opacity-100"
+      onClick={async (e) => {
+        e.preventDefault();
+        setBusy(true);
+        await supabase.from("invoices").update({ client_id: null }).eq("id", invoiceId);
+        setBusy(false);
+        router.refresh();
+      }}
+    >
+      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Unlink className="h-3.5 w-3.5" />}
+    </button>
   );
 }
