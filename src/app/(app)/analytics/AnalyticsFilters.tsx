@@ -33,6 +33,32 @@ const SOURCES: Option[] = [
  * writes to the query string; the server component re-reads and recalculates,
  * so what you see can never disagree with the filters.
  */
+/** Module scope — defining it inside the component remounts it every render. */
+function Drop({
+  value, icon: Icon, options, onChange,
+}: {
+  value: string;
+  icon: LucideIcon;
+  options: Option[];
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="relative inline-flex items-center">
+      <Icon className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-muted" />
+      <select
+        className="h-9 cursor-pointer appearance-none rounded-lg border border-line bg-surface pl-8 pr-7 text-[13px] text-ink outline-none transition-colors hover:border-copper/40 focus:border-copper focus:ring-2 focus:ring-copper-soft"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+      <svg className="pointer-events-none absolute right-2.5 h-3 w-3 text-muted" viewBox="0 0 12 12" fill="none">
+        <path d="M3 4.5 6 8l3-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    </label>
+  );
+}
+
 export function AnalyticsFilters({
   operators,
   campaigns,
@@ -55,33 +81,15 @@ export function AnalyticsFilters({
 
   const dirty = Boolean(active.rep || active.status || active.source || active.campaign);
 
-  const Drop = ({ k, icon: Icon, options }: { k: string; icon: LucideIcon; options: Option[] }) => (
-    <label className="relative inline-flex items-center">
-      <Icon className="pointer-events-none absolute left-2.5 h-3.5 w-3.5 text-muted" />
-      <select
-        className="h-9 cursor-pointer appearance-none rounded-lg border border-line bg-surface pl-8 pr-7 text-[13px] text-ink outline-none transition-colors hover:border-copper/40 focus:border-copper focus:ring-2 focus:ring-copper-soft"
-        value={active[k] ?? ""}
-        onChange={(e) => set(k, e.target.value)}
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
-      <svg className="pointer-events-none absolute right-2.5 h-3 w-3 text-muted" viewBox="0 0 12 12" fill="none">
-        <path d="M3 4.5 6 8l3-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
-    </label>
-  );
-
   return (
     <div className="sticky top-0 z-30 -mx-6 mb-5 border-b border-line bg-surface/90 px-6 py-2.5 backdrop-blur lg:-mx-8 lg:px-8">
       <div className="flex flex-wrap items-center gap-2">
-        <Drop k="range" icon={CalendarDays} options={RANGES} />
-        <Drop k="rep" icon={User} options={[{ value: "", label: "All operators" }, ...operators]} />
-        <Drop k="status" icon={Tag} options={STATUSES} />
-        <Drop k="source" icon={Radio} options={SOURCES} />
+        <Drop value={active.range ?? ""} onChange={(v) => set("range", v)} icon={CalendarDays} options={RANGES} />
+        <Drop value={active.rep ?? ""} onChange={(v) => set("rep", v)} icon={User} options={[{ value: "", label: "All operators" }, ...operators]} />
+        <Drop value={active.status ?? ""} onChange={(v) => set("status", v)} icon={Tag} options={STATUSES} />
+        <Drop value={active.source ?? ""} onChange={(v) => set("source", v)} icon={Radio} options={SOURCES} />
         {campaigns.length > 0 && (
-          <Drop k="campaign" icon={Megaphone} options={[{ value: "", label: "All campaigns" }, ...campaigns]} />
+          <Drop value={active.campaign ?? ""} onChange={(v) => set("campaign", v)} icon={Megaphone} options={[{ value: "", label: "All campaigns" }, ...campaigns]} />
         )}
 
         <div className="ml-auto flex items-center gap-2">
