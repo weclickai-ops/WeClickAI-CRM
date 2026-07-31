@@ -12,6 +12,25 @@ import {
 
 type Option = { value: string; label: string };
 
+/** Module scope — see the note in the add-client page about remounting. */
+function Drop({
+  value, options, onChange,
+}: {
+  value: string;
+  options: Option[];
+  onChange: (v: string) => void;
+}) {
+  return (
+    <select
+      className="h-9 cursor-pointer rounded-lg border border-line bg-surface px-2.5 text-[13px] outline-none transition-colors hover:border-copper/40 focus:border-copper focus:ring-2 focus:ring-copper-soft"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+  );
+}
+
 export function ClientFilters({
   managers,
   active,
@@ -34,16 +53,6 @@ export function ClientFilters({
 
   const filtered = Boolean(
     active.service || active.status || active.priority || active.manager || active.pay
-  );
-
-  const Drop = ({ k, options }: { k: string; options: Option[] }) => (
-    <select
-      className="h-9 cursor-pointer rounded-lg border border-line bg-surface px-2.5 text-[13px] outline-none transition-colors hover:border-copper/40 focus:border-copper focus:ring-2 focus:ring-copper-soft"
-      value={active[k] ?? ""}
-      onChange={(e) => set(k, e.target.value)}
-    >
-      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
   );
 
   return (
@@ -83,16 +92,18 @@ export function ClientFilters({
 
       {open && (
         <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-black/[0.012] p-2.5">
-          <Drop k="service" options={[{ value: "", label: "All services" }, ...SERVICES.map((s) => ({ value: s, label: s }))]} />
+          <Drop value={active.service ?? ""} onChange={(v) => set("service", v)} options={[{ value: "", label: "All services" }, ...SERVICES.map((s) => ({ value: s, label: s }))]} />
           <Drop
-            k="status"
+            value={active.status ?? ""}
+            onChange={(v) => set("status", v)}
             options={[
               { value: "", label: "All statuses" },
               ...Object.entries(PROJECT_STATUS).map(([v, m]) => ({ value: v, label: m.label })),
             ]}
           />
           <Drop
-            k="priority"
+            value={active.priority ?? ""}
+            onChange={(v) => set("priority", v)}
             options={[
               { value: "", label: "Any priority" },
               { value: "urgent", label: "Urgent" },
@@ -101,9 +112,10 @@ export function ClientFilters({
               { value: "low", label: "Low" },
             ]}
           />
-          <Drop k="manager" options={[{ value: "", label: "Anyone" }, ...managers]} />
+          <Drop value={active.manager ?? ""} onChange={(v) => set("manager", v)} options={[{ value: "", label: "Anyone" }, ...managers]} />
           <Drop
-            k="pay"
+            value={active.pay ?? ""}
+            onChange={(v) => set("pay", v)}
             options={[
               { value: "", label: "Any payment" },
               { value: "outstanding", label: "Money outstanding" },
