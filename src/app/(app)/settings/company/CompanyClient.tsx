@@ -8,6 +8,35 @@ import type { CompanySettings, CompanyContact } from "@/lib/types";
 import { Plus, Trash2, Loader2, Check, Building2, Users, FileText, PenLine } from "lucide-react";
 import { ImageUpload } from "@/components/ui/ImageUpload";
 
+/**
+ * At module scope deliberately — declaring it inside the component makes React
+ * remount the input on every render, which loses focus after each keystroke.
+ */
+function Field({
+  label, value, onChange, placeholder, hint, area = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  hint?: string;
+  area?: boolean;
+}) {
+  return (
+    <div>
+      <label className="label">{label}</label>
+      {area ? (
+        <textarea className="input min-h-[90px]" placeholder={placeholder}
+                  value={value} onChange={(e) => onChange(e.target.value)} />
+      ) : (
+        <input className="input" placeholder={placeholder}
+               value={value} onChange={(e) => onChange(e.target.value)} />
+      )}
+      {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
+    </div>
+  );
+}
+
 export function CompanyClient({ settings }: { settings: CompanySettings }) {
   const supabase = createClient();
   const router = useRouter();
@@ -55,31 +84,6 @@ export function CompanyClient({ settings }: { settings: CompanySettings }) {
     router.refresh();
   }
 
-  const Field = ({
-    label, k, placeholder, hint, area = false,
-  }: {
-    label: string; k: keyof typeof f; placeholder?: string; hint?: string; area?: boolean;
-  }) => (
-    <div>
-      <label className="label">{label}</label>
-      {area ? (
-        <textarea
-          className="input min-h-[90px]"
-          placeholder={placeholder}
-          value={f[k]}
-          onChange={(e) => upd({ [k]: e.target.value } as Partial<typeof f>)}
-        />
-      ) : (
-        <input
-          className="input"
-          placeholder={placeholder}
-          value={f[k]}
-          onChange={(e) => upd({ [k]: e.target.value } as Partial<typeof f>)}
-        />
-      )}
-      {hint && <p className="mt-1 text-xs text-muted">{hint}</p>}
-    </div>
-  );
 
   return (
     <>
@@ -101,22 +105,21 @@ export function CompanyClient({ settings }: { settings: CompanySettings }) {
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              <Field label="Legal name" k="legal_name" placeholder="WeClick AI" />
+              <Field label="Legal name" placeholder="WeClick AI"  value={f.legal_name} onChange={(v) => upd({ legal_name: v })} />
             </div>
             <div className="sm:col-span-2">
               <Field
                 label="Business address"
-                k="address"
                 area
                 placeholder={"Shapur Nagar, Jeedimetla\nHyderabad, Telangana 500055"}
                 hint="Line breaks are kept, so put it on three or four short lines."
-              />
+               value={f.address} onChange={(v) => upd({ address: v })} />
             </div>
-            <Field label="Email" k="email" placeholder="hello@weclickai.com" />
-            <Field label="Website" k="website" placeholder="weclickai.com" />
-            <Field label="Main phone" k="phone" placeholder="+91 93465 14739" />
-            <Field label="GSTIN" k="gstin" hint="Left blank, it won't print." />
-            <Field label="PAN" k="pan" />
+            <Field label="Email" placeholder="hello@weclickai.com"  value={f.email} onChange={(v) => upd({ email: v })} />
+            <Field label="Website" placeholder="weclickai.com"  value={f.website} onChange={(v) => upd({ website: v })} />
+            <Field label="Main phone" placeholder="+91 93465 14739"  value={f.phone} onChange={(v) => upd({ phone: v })} />
+            <Field label="GSTIN" hint="Left blank, it won't print."  value={f.gstin} onChange={(v) => upd({ gstin: v })} />
+            <Field label="PAN"  value={f.pan} onChange={(v) => upd({ pan: v })} />
           </div>
         </div>
 
