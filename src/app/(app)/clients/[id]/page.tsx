@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { CompletionRing, ProjectCard, AddProject, NotesAndLog } from "./WorkspaceClient";
+import { CompletionRing, ProjectCard, AddProject, NotesAndLog, LinkInvoice, UnlinkInvoice } from "./WorkspaceClient";
 import { CLIENT_STATUS, HEALTH, projectHealth, daysUntil } from "@/lib/delivery";
 import { money, initials, cx, timeAgo } from "@/lib/utils";
 import type { Client, Project, Profile, Invoice, ClientActivity } from "@/lib/types";
@@ -29,6 +29,15 @@ export default async function ClientWorkspace({ params }: { params: Promise<{ id
       supabase.from("client_activity").select("*").eq("client_id", id).order("created_at", { ascending: false }).limit(30),
     ]);
 
+  // Invoices raised before this client existed have no client_id — offer them
+  // for linking rather than making anyone re-key an invoice.
+  const { data: orphanRows } = await supabase
+    .from("invoices")
+    .select("id, number, client_name, total, currency")
+    .is("client_id", null)
+    .order("created_at", { ascending: false })
+    .limit(30);
+
   if (!client) notFound();
 
   const c = client as Client;
@@ -36,6 +45,7 @@ export default async function ClientWorkspace({ params }: { params: Promise<{ id
   const team = (profiles ?? []) as Profile[];
   const invoices = (invoiceRows ?? []) as Invoice[];
   const activity = (activityRows ?? []) as ClientActivity[];
+  const orphans = (orphanRows ?? []) as { id: string; number: string; client_name: string; total: number; currency: string }[];
 
   const nameOf = new Map(team.map((t) => [t.id, t.full_name ?? t.email]));
   const today = ymd(new Date());
@@ -193,8 +203,9 @@ export default async function ClientWorkspace({ params }: { params: Promise<{ id
                   const bal = Number(i.total) - Number(i.amount_paid ?? 0);
                   return (
                     <li key={i.id}>
+                      <div className="group flex items-center gap-1.5">
                       <Link href={`/invoices/${i.id}`}
-                            className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-[12px] hover:bg-black/[0.03]">
+                            className="flex flex-1 items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-[12px] hover:bg-black/[0.03]">
                         <span className="min-w-0">
                           <span className="block truncate font-medium">{i.number}</span>
                           <span className="block text-[11px] text-muted">{i.due_date ? `due ${i.due_date}` : "no due date"}</span>
@@ -204,6 +215,8 @@ export default async function ClientWorkspace({ params }: { params: Promise<{ id
                           {bal > 0 && <span className="block text-[11px] text-amber-700">{money(bal)} due</span>}
                         </span>
                       </Link>
+                      <UnlinkInvoice invoiceId={i.id} />
+                      </div>
                     </li>
                   );
                 })}
@@ -213,6 +226,8 @@ export default async function ClientWorkspace({ params }: { params: Promise<{ id
                 <Receipt className="h-3.5 w-3.5" /> Nothing invoiced yet
               </p>
             )}
+
+            <LinkInvoice clientId={c.id} unlinked={orphans} />
           </div>
 
           {/* deadlines */}
