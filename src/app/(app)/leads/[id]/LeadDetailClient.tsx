@@ -26,7 +26,7 @@ const INTERVALS = [1, 2, 3, 5, 7, 14, 30];
 
 /** One-tap scheduling. Days from today. */
 const QUICK_FOLLOWUPS = [
-  { label: "Today", days: 0 },
+  { label: "Today", days: 0 },   // due now — shows under Today on /follow-ups
   { label: "Tomorrow", days: 1 },
   { label: "+3 days", days: 3 },
   { label: "Next week", days: 7 },
@@ -351,10 +351,12 @@ export function LeadDetailClient({
                            onChange={(e) => patch({ next_followup_at: e.target.value }, "next")} />
                   </div>
                   <div>
-                    <label className="label">Every</label>
+                    <label className="label">Then every</label>
                     <select className="input mt-1 py-1.5 text-sm" value={lead.followup_interval_days}
                             onChange={(e) => patch({ followup_interval_days: Number(e.target.value) }, "interval")}>
-                      {INTERVALS.map((d) => <option key={d} value={d}>{d} days</option>)}
+                      {INTERVALS.map((d) => (
+                        <option key={d} value={d}>{d === 1 ? "1 day" : `${d} days`}</option>
+                      ))}
                     </select>
                   </div>
                 </div>
