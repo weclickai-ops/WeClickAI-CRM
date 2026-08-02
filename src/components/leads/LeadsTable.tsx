@@ -8,7 +8,23 @@ import { timeAgo } from "@/lib/utils";
 import type { LeadFilters } from "@/lib/leads/export";
 import type { Lead, PipelineStage, Profile } from "@/lib/types";
 import { LeadDrawer } from "./LeadDrawer";
-import { Phone, Globe, ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
+import {
+  Phone, Globe, ChevronLeft, ChevronRight, Download, Loader2,
+  UserPlus, CalendarClock, Check, X,
+} from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+
+/** Days from today. 0 means due today, which is the point of the first one. */
+const BULK_FOLLOWUPS = [
+  { label: "Today", days: 0 },
+  { label: "Tomorrow", days: 1 },
+  { label: "In 3 days", days: 3 },
+  { label: "Next week", days: 7 },
+];
+
+function ymd(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 /**
  * The table moved to a client component so rows can be ticked. Selection is what
@@ -37,6 +53,9 @@ export function LeadsTable({
   // Clicking a row opens a panel rather than navigating, so your filters and
   // scroll position survive — which matters when working down a call list.
   const [openId, setOpenId] = useState<string | null>(null);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [followOpen, setFollowOpen] = useState(false);
+  const supabase = createClient();
   const openLead = leads.find((l) => l.id === openId) ?? null;
 
   const lastPage = Math.max(1, Math.ceil(filteredCount / pageSize));
@@ -64,6 +83,57 @@ export function LeadsTable({
     const next = new URLSearchParams(params.toString());
     p <= 1 ? next.delete("page") : next.set("page", String(p));
     router.push(`${pathname}?${next.toString()}`);
+  }
+
+  /**
+   * Assign every ticked lead in one update. Splitting 50 leads across the team
+   * one row at a time is the job this replaces.
+   */
+  async function bulkAssign(userId: string | null) {
+    if (selected.size === 0) return;
+    setBusy(true);
+    setNote(null);
+    const ids = [...selected];
+    const { error } = await supabase
+      .from("leads")
+      .update({ assigned_to: userId })
+      .in("id", ids);
+    setBusy(false);
+    setAssignOpen(false);
+    if (error) {
+      setNote({ ok: false, text: error.message });
+      return;
+    }
+    const who = userId ? (team.find((t) => t.id === userId)?.full_name ?? "that person") : "nobody";
+    setNote({ ok: true, text: `${ids.length} lead${ids.length === 1 ? "" : "s"} assigned to ${who}.` });
+    setSelected(new Set());
+    router.refresh();
+  }
+
+  /** Schedule a follow-up on every ticked lead at once. */
+  async function bulkFollowUp(days: number) {
+    if (selected.size === 0) return;
+    setBusy(true);
+    setNote(null);
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    const ids = [...selected];
+    const { error } = await supabase
+      .from("leads")
+      .update({ followups_enabled: true, next_followup_at: ymd(d) })
+      .in("id", ids);
+    setBusy(false);
+    setFollowOpen(false);
+    if (error) {
+      setNote({ ok: false, text: error.message });
+      return;
+    }
+    setNote({
+      ok: true,
+      text: `${ids.length} lead${ids.length === 1 ? "" : "s"} due ${days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`}.`,
+    });
+    setSelected(new Set());
+    router.refresh();
   }
 
   async function exportCsv() {
@@ -128,6 +198,63 @@ export function LeadsTable({
           )}
         </p>
 
+        <div className="flex flex-wrap items-center gap-2">
+        {selected.size > 0 && (
+          <>
+            <div className="relative">
+              <button className="btn-outline text-sm" onClick={() => { setAssignOpen((v) => !v); setFollowOpen(false); }}
+                      disabled={busy}>
+                <UserPlus className="h-4 w-4" /> Assign
+              </button>
+              {assignOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setAssignOpen(false)} />
+                  <div className="absolute right-0 z-20 mt-1 w-56 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
+                    <p className="px-3 py-1.5 text-[11px] text-muted">
+                      Assign {selected.size} lead{selected.size === 1 ? "" : "s"} to
+                    </p>
+                    {team.map((t) => (
+                      <button key={t.id} onClick={() => bulkAssign(t.id)}
+                              className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] hover:bg-black/[0.03]">
+                        <Check className="h-3.5 w-3.5 text-transparent" />
+                        {t.full_name ?? t.email}
+                      </button>
+                    ))}
+                    <div className="my-1 h-px bg-line" />
+                    <button onClick={() => bulkAssign(null)}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] text-muted hover:bg-black/[0.03]">
+                      <X className="h-3.5 w-3.5" /> Unassign
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="relative">
+              <button className="btn-outline text-sm" onClick={() => { setFollowOpen((v) => !v); setAssignOpen(false); }}
+                      disabled={busy}>
+                <CalendarClock className="h-4 w-4" /> Follow up
+              </button>
+              {followOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setFollowOpen(false)} />
+                  <div className="absolute right-0 z-20 mt-1 w-52 overflow-hidden rounded-xl border border-line bg-surface py-1 shadow-xl">
+                    <p className="px-3 py-1.5 text-[11px] text-muted">
+                      Schedule {selected.size} lead{selected.size === 1 ? "" : "s"}
+                    </p>
+                    {BULK_FOLLOWUPS.map((q) => (
+                      <button key={q.label} onClick={() => bulkFollowUp(q.days)}
+                              className="block w-full px-3 py-2 text-left text-[13px] hover:bg-black/[0.03]">
+                        {q.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </>
+        )}
+
         <button className="btn-outline text-sm" onClick={exportCsv} disabled={busy || exportCount === 0}>
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
           Export CSV
@@ -135,6 +262,7 @@ export function LeadsTable({
             {exportCount.toLocaleString("en-IN")}
           </span>
         </button>
+        </div>
       </div>
 
       {note && (
