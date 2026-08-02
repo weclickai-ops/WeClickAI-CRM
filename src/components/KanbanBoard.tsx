@@ -50,11 +50,22 @@ export function KanbanBoard({ stages, leads: initial }:
     if (!lead || lead.stage_id === stageId) return;
 
     const before = lead.stage_id;
-    setLeads((ls) => ls.map((l) => (l.id === id ? { ...l, stage_id: stageId } : l)));
+    const beforeStatus = lead.status;
 
-    const { error: err } = await supabase.from("leads").update({ stage_id: stageId }).eq("id", id);
+    // Every stage declares the status it represents. Moving a card has to write
+    // both, or the board and the Qualified / Won pages disagree — a lead sits in
+    // the Qualified column while its status still says "new", so it never shows
+    // up anywhere that filters on status.
+    const nextStatus = stages.find((st) => st.id === stageId)?.maps_to_status ?? lead.status;
+
+    setLeads((ls) => ls.map((l) => (l.id === id ? { ...l, stage_id: stageId, status: nextStatus } : l)));
+
+    const { error: err } = await supabase
+      .from("leads")
+      .update({ stage_id: stageId, status: nextStatus })
+      .eq("id", id);
     if (err) {
-      setLeads((ls) => ls.map((l) => (l.id === id ? { ...l, stage_id: before } : l)));
+      setLeads((ls) => ls.map((l) => (l.id === id ? { ...l, stage_id: before, status: beforeStatus } : l)));
       setError(
         err.message.toLowerCase().includes("row-level security")
           ? "You don't have permission to move that lead."
