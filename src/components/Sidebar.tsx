@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Logo } from "./Logo";
@@ -10,6 +11,7 @@ import {
   LayoutDashboard, Users, KanbanSquare, Radar, FileText,
   Settings, LogOut, Sparkles, GitBranch, Wallet,
   BadgeCheck, CalendarClock, Landmark, Building2, Briefcase, Columns3, ExternalLink, BarChart3,
+  Menu, X,
 } from "lucide-react";
 
 /** The finance platform is a separate deployment on the same Supabase project. */
@@ -41,6 +43,17 @@ export function Sidebar({ profile }: { profile: Profile }) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
+  const [open, setOpen] = useState(false);
+
+  // Navigating should close the drawer — otherwise you tap a link and stare at
+  // the menu you just used.
+  useEffect(() => { setOpen(false); }, [pathname]);
+
+  // Don't let the page behind the drawer scroll under your finger.
+  useEffect(() => {
+    document.body.style.overflow = open ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [open]);
 
   async function signOut() {
     await supabase.auth.signOut();
@@ -71,9 +84,18 @@ export function Sidebar({ profile }: { profile: Profile }) {
     );
   };
 
-  return (
-    <aside className="flex w-64 shrink-0 flex-col" style={{ background: "var(--charcoal)" }}>
-      <div className="px-5 py-5"><Logo light /></div>
+  const panel = (
+    <>
+      <div className="flex items-center justify-between px-5 py-5">
+        <Logo light />
+        <button
+          className="rounded-md p-1.5 text-white/50 hover:bg-white/10 hover:text-white lg:hidden"
+          onClick={() => setOpen(false)}
+          aria-label="Close menu"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
 
       <nav className="flex-1 space-y-1 px-3">
         {NAV.map((n) => <Item key={n.href} {...n} />)}
@@ -102,6 +124,59 @@ export function Sidebar({ profile }: { profile: Profile }) {
           </button>
         </div>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* phone and tablet — a bar you can reach, with the drawer over it */}
+      <header
+        className="sticky top-0 z-40 flex items-center gap-3 px-4 lg:hidden"
+        style={{
+          background: "var(--charcoal)",
+          paddingTop: "max(0.75rem, env(safe-area-inset-top))",
+          paddingBottom: "0.75rem",
+        }}
+      >
+        <button
+          className="rounded-lg p-2 text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+          onClick={() => setOpen(true)}
+          aria-label="Open menu"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        <Logo light />
+        <span className="ml-auto grid h-8 w-8 place-items-center rounded-full bg-copper text-[12px] font-semibold text-white">
+          {initials(profile.full_name, profile.email)}
+        </span>
+      </header>
+
+      {open && (
+        <div className="fixed inset-0 z-50 lg:hidden">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setOpen(false)}
+          />
+          <aside
+            className="absolute left-0 top-0 flex h-full w-[17rem] max-w-[85vw] flex-col overflow-y-auto shadow-2xl"
+            style={{
+              background: "var(--charcoal)",
+              paddingTop: "env(safe-area-inset-top)",
+              paddingBottom: "env(safe-area-inset-bottom)",
+            }}
+          >
+            {panel}
+          </aside>
+        </div>
+      )}
+
+      {/* desktop — unchanged */}
+      <aside
+        className="hidden w-64 shrink-0 flex-col lg:flex"
+        style={{ background: "var(--charcoal)" }}
+      >
+        {panel}
+      </aside>
+    </>
   );
 }
