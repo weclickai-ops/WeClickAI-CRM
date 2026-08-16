@@ -24,10 +24,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!profile.active) redirect("/pending");
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    // On phones the whole page scrolls, so the top bar can stick and the
+    // browser chrome hides as you scroll. On desktop only the main column
+    // scrolls, keeping the sidebar fixed — the behaviour you already had.
+    <div className="lg:flex lg:h-screen lg:overflow-hidden">
       <Sidebar profile={profile as Profile} />
-      <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-7xl px-6 py-7 lg:px-8">{children}</div>
+      <main className="flex-1 lg:overflow-y-auto">
+        <div
+          className="mx-auto max-w-7xl px-4 py-5 sm:px-6 sm:py-7 lg:px-8"
+          style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
+        >
+          {children}
+        </div>
       </main>
     </div>
   );
