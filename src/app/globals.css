@@ -71,3 +71,60 @@ body {
 ::-webkit-scrollbar { height: 10px; width: 10px; }
 ::-webkit-scrollbar-thumb { background: #d7d3cc; border-radius: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------------------------------------------------------------------
+   Mobile and installed-app behaviour
+   --------------------------------------------------------------------- */
+
+/* Stop iOS inflating text in landscape. */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Momentum scrolling inside the wide tables. */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Safari zooms the page when you focus an input under 16px. Bumping the
+   font size on small screens is the only reliable way to stop it. */
+@media (max-width: 640px) {
+  .input,
+  input[type="text"],
+  input[type="email"],
+  input[type="tel"],
+  input[type="date"],
+  input[type="number"],
+  input[type="search"],
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* Touch targets: a 28px button is fine with a mouse and awkward with a
+   thumb. Only applies where there's no hover, so desktop is untouched. */
+@media (hover: none) and (pointer: coarse) {
+  .btn,
+  .btn-primary,
+  .btn-outline,
+  .btn-ghost,
+  .btn-danger {
+    min-height: 40px;
+  }
+}
+
+/* Installed to the home screen: no browser chrome, so keep clear of the
+   notch and the home indicator. */
+@media (display-mode: standalone) {
+  body {
+    overscroll-behavior-y: none;
+  }
+}
+
+@media print {
+  header,
+  aside {
+    display: none !important;
+  }
+}
