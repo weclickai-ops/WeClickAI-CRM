@@ -97,7 +97,7 @@ export function Sidebar({ profile }: { profile: Profile }) {
         </button>
       </div>
 
-      <nav className="flex-1 space-y-1 px-3">
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto px-3 pb-2">
         {NAV.map((n) => <Item key={n.href} {...n} />)}
         <ExternalItem href={FINANCE_URL} label="Finance" icon={Wallet} />
 
@@ -109,7 +109,7 @@ export function Sidebar({ profile }: { profile: Profile }) {
         ))}
       </nav>
 
-      <div className="border-t border-white/10 p-3">
+      <div className="shrink-0 border-t border-white/10 p-3">
         <div className="flex items-center gap-3 rounded-lg px-2 py-2">
           <div className="grid h-9 w-9 place-items-center rounded-full bg-copper text-sm font-semibold text-white">
             {initials(profile.full_name, profile.email)}
